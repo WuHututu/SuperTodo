@@ -263,7 +263,7 @@ public class WidgetDataManager {
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject obj = arr.optJSONObject(i);
                     if (obj != null) {
-                        list.add(TodoItem.fromJson(obj));
+                        TodoItem item = TodoItem.fromJson(obj); if (!item.done) list.add(item);
                     }
                 }
                 return list;

@@ -223,7 +223,7 @@
       min-width: 16px;
       margin-top: 2px;
     }
-    
+
     /* 复选框弹性动画 */
     .task-check {
       width: 18px;
@@ -474,6 +474,7 @@
             <span class="card-badge" id="listBadge">0 / 0</span>
           </div>
           <div style="display:flex; align-items:center; gap:6px;">
+            <button class="tool-btn" onclick="showInputRow()" title="输入新待办"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
             <button class="tool-btn" onclick="switchToMode('settings')" title="自定义排序">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
             </button>
@@ -488,16 +489,6 @@
         </div>
 
         <div class="card-footer">
-          <div class="action-btn-group" id="listBtnRow">
-            <button class="action-pill" onclick="showInputRow()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              <span>输入新待办</span>
-            </button>
-            <button class="action-pill" onclick="switchToMode('picker')">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
-              <span>挑选已有待办</span>
-            </button>
-          </div>
 
           <div class="input-row" id="listInputRow" style="display:none;">
             <input type="text" class="text-input" id="newTodoInput" placeholder="输入待办内容并回车..." onkeydown="if(event.key==='Enter')submitNewTodo()">
@@ -519,7 +510,7 @@
         </div>
 
         <p style="font-size:11px; color:var(--text-sec); margin-bottom:8px;">
-          拖拽右侧手柄调整顺序（小组件按此顺序推进）：
+
         </p>
 
         <div class="task-list" id="settingsSortListEl">
@@ -527,38 +518,6 @@
         </div>
 
         <!-- 底部添加按钮：自适应暗色背景，暗色模式下自然变深，不突兀 -->
-        <div class="card-footer">
-          <button class="action-pill" style="width:100%; border-color:var(--primary); color:var(--primary);" onclick="switchToMode('picker')">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            <span>从已有待办库中挑选添加</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 视图 C：从已有待办库中挑选 -->
-      <div id="viewPicker" class="view-page" style="display:none;">
-        <div class="card-head">
-          <div class="head-left">
-            <span class="card-title">挑选已有待办</span>
-          </div>
-          <button class="btn-close" onclick="switchToMode(previousMode)" title="返回">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        </div>
-
-        <p style="font-size:11px; color:var(--text-sec); margin-bottom:8px;">
-          勾选需要放入桌面待办清单的事项：
-        </p>
-
-        <div class="task-list" id="pickerListEl">
-          <!-- 动态渲染已有库 -->
-        </div>
-
-        <div class="card-footer">
-          <button class="action-pill primary" style="width:100%;" onclick="confirmPickerSelection()">
-            <span>确认加入清单</span>
-          </button>
-        </div>
       </div>
 
     </div>
@@ -661,21 +620,19 @@
         previousMode = currentMode;
       }
       currentMode = mode;
-      
+
       const vList = document.getElementById('viewList');
       const vSettings = document.getElementById('viewSettings');
-      const vPicker = document.getElementById('viewPicker');
+
 
       vList.style.display = (mode === 'list') ? 'flex' : 'none';
       vSettings.style.display = (mode === 'settings') ? 'flex' : 'none';
-      vPicker.style.display = (mode === 'picker') ? 'flex' : 'none';
+
 
       if (mode === 'list') {
         renderList();
       } else if (mode === 'settings') {
         renderSettings();
-      } else if (mode === 'picker') {
-        renderPicker();
       }
     }
 
@@ -685,12 +642,12 @@
     function renderList() {
       const listEl = document.getElementById('curatedListEl');
       const badgeEl = document.getElementById('listBadge');
-      const tasks = rootData.widget2x2 || [];
+      const tasks = (rootData.widget2x2 || []).filter(t => !t.done);
       const doneCount = tasks.filter(t => t.done).length;
       badgeEl.textContent = doneCount + ' / ' + tasks.length;
 
       if (tasks.length === 0) {
-        listEl.innerHTML = '<div class="empty-tip">当前清单暂无待办事项<br>点击下方按钮添加或挑选</div>';
+        listEl.innerHTML = '<div class="empty-tip">当前暂无未完成事项</div>';
         return;
       }
 
@@ -719,7 +676,7 @@
     }
 
     function showInputRow() {
-      document.getElementById('listBtnRow').style.display = 'none';
+
       document.getElementById('listInputRow').style.display = 'flex';
       setTimeout(() => {
         document.getElementById('newTodoInput').focus();
@@ -727,7 +684,7 @@
     }
 
     function hideInputRow() {
-      document.getElementById('listBtnRow').style.display = 'flex';
+
       document.getElementById('listInputRow').style.display = 'none';
       document.getElementById('newTodoInput').value = '';
     }
@@ -777,7 +734,6 @@
           '<span class="task-seq">' + (idx + 1) + '.</span>' +
           '<span class="settings-title">' + escapeHtml(t.title) + '</span>' +
           '<div class="drag-handle" title="按住拖拽"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"></circle><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="15" cy="12" r="2"></circle><circle cx="9" cy="18" r="2"></circle><circle cx="15" cy="18" r="2"></circle></svg></div>' +
-          '<button class="tool-btn danger" onclick="removeFromCurated(\'' + t.id + '\')" title="从清单移除"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>' +
         '</div>';
       }).join('');
 
@@ -820,67 +776,7 @@
       });
     }
 
-    function removeFromCurated(id) {
-      rootData.widget2x2 = (rootData.widget2x2 || []).filter(t => t.id !== id);
-      saveData();
-      renderSettings();
-    }
-
     // ----------------------------------------------------
-    // 视图 C：挑选已有待办
-    // ----------------------------------------------------
-    let selectedPickerIds = new Set();
-
-    function renderPicker() {
-      const listEl = document.getElementById('pickerListEl');
-      const allItems = rootData.items || [];
-      const currentIds = new Set((rootData.widget2x2 || []).map(t => t.id));
-      selectedPickerIds = new Set(currentIds);
-
-      if (allItems.length === 0) {
-        listEl.innerHTML = '<div class="empty-tip">系统内尚无已有待办事项</div>';
-        return;
-      }
-
-      listEl.innerHTML = allItems.map(it => {
-        const checked = selectedPickerIds.has(it.id);
-        return '<div class="task-row ' + (checked ? 'done' : '') + '" onclick="togglePickerItem(this, \'' + it.id + '\')">' +
-          '<div class="task-check"></div>' +
-          '<div class="task-title">' + escapeHtml(it.title) + '</div>' +
-        '</div>';
-      }).join('');
-    }
-
-    function togglePickerItem(rowEl, id) {
-      if (selectedPickerIds.has(id)) {
-        selectedPickerIds.delete(id);
-        rowEl.classList.remove('done');
-      } else {
-        selectedPickerIds.add(id);
-        rowEl.classList.add('done');
-      }
-    }
-
-    function confirmPickerSelection() {
-      const allItems = rootData.items || [];
-      const oldMap = new Map((rootData.widget2x2 || []).map(t => [t.id, t]));
-      const newCurated = [];
-
-      allItems.forEach(it => {
-        if (selectedPickerIds.has(it.id)) {
-          if (oldMap.has(it.id)) {
-            newCurated.push(oldMap.get(it.id));
-          } else {
-            newCurated.push({ id: it.id, title: it.title, done: !!it.done });
-          }
-        }
-      });
-
-      rootData.widget2x2 = newCurated;
-      saveData();
-      switchToMode(previousMode);
-    }
-
     function escapeHtml(str) {
       return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
