@@ -23,14 +23,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: 确定版本号（打标签用标签名；手动触发按最新标签递增）
+      - name: 确定版本号（打标签用标签名；手动触发复用最新标签）
         id: ver
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
             NEW="${{ github.ref_name }}"
           else
             LATEST=$(git tag --sort=-v:refname | head -1)
-            NEW=$(python3 -c "import re; latest='$LATEST'.strip(); nums=[int(x) for x in re.findall(r'\d+',latest)] or [0,0]; nums[-1]+=1; print('v'+'.'.join(map(str,nums)))")
+            NEW="$LATEST"
           fi
           echo "NEW=$NEW" >> "$GITHUB_ENV"
           echo "构建版本 $NEW"
