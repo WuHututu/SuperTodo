@@ -22,6 +22,9 @@ let state={
   hapticFeedback:true,
   customBg:{type:'default',color:'#f2f5fb',image:'',opacity:80},
   ai:{enabled:false,base:'',key:'',model:''},
+  widget2x2:[],
+  widget2x2Background:{opacity:80,blur:12},
+  dataUpdatedAt:0,
   quadrantWidget:{q1:[],q2:[],q3:[],q4:[]}
 };
 
@@ -77,8 +80,57 @@ function itemScenes(it){
   if(typeof it.scene==='string' && it.scene.trim()) return [it.scene.trim()];
   return [];
 }
+function normalizeStoredItem(it){
+  const types=itemTypes(it);
+  const scenes=itemScenes(it);
+  const doneScenes=Array.isArray(it.doneScenes)?it.doneScenes:(it.done?scenes.slice():[]);
+  const doneTypes=Array.isArray(it.doneTypes)?it.doneTypes:(it.done?types.slice():[]);
+  const isDone=scenes.length>0?scenes.every(s=>doneScenes.includes(s)):!!it.done;
+  return Object.assign({}, it, {
+    types,
+    scenes,
+    doneScenes,
+    doneTypes,
+    done: isDone,
+    type: it.type || (Array.isArray(types) && types[0]) || '',
+    scene: it.scene || (Array.isArray(scenes) && scenes[0]) || ''
+  });
+}
+function defaultWidget2x2Items(items){
+  return buildWidget2x2Items([],items);
+}
+function buildWidget2x2Items(list, items){
+  const byId=new Map((items||[]).filter(it=>it&&it.id).map(it=>[it.id,it]));
+  const seen=new Set();
+  const result=[];
+  (Array.isArray(list)?list:[]).forEach(w=>{
+    const id=typeof w==='string'?w:(w&&w.id);
+    const it=byId.get(id);
+    if(it&&!seen.has(it.id)){
+      result.push({id:it.id});
+      seen.add(it.id);
+    }
+  });
+  (items||[]).forEach(it=>{
+    if(it&&it.id&&!it.done&&!seen.has(it.id)){
+      result.push({id:it.id});
+      seen.add(it.id);
+    }
+  });
+  return result;
+}
+function normalizeWidget2x2Background(value){
+  const bg=Object.assign({opacity:80,blur:12,type:'theme'},value||{});
+  bg.opacity=Math.max(0,Math.min(100,Number(bg.opacity)||80));
+  bg.blur=Math.max(0,Math.min(30,Number(bg.blur)||0));
+  if(bg.type!=='image')bg.type='theme';
+  return {opacity:bg.opacity,blur:bg.blur,type:bg.type};
+}
 
 function save(){
+  state.widget2x2=buildWidget2x2Items(state.widget2x2,state.items);
+  state.widget2x2Background=normalizeWidget2x2Background(state.widget2x2Background);
+  state.dataUpdatedAt=Math.max(Date.now(),(Number(state.dataUpdatedAt)||0)+1);
   try{
     localStorage.setItem(KEY,JSON.stringify(state));
   }catch(err){
@@ -91,22 +143,7 @@ function save(){
 }
 function load(){
   try{const d=JSON.parse(localStorage.getItem(KEY));if(d){
-    state.items=(d.items||[]).map(it=>{
-      const types=itemTypes(it);
-      const scenes=itemScenes(it);
-      const doneScenes=Array.isArray(it.doneScenes)?it.doneScenes:(it.done?scenes.slice():[]);
-      const doneTypes=Array.isArray(it.doneTypes)?it.doneTypes:(it.done?types.slice():[]);
-      const isDone=scenes.length>0?scenes.every(s=>doneScenes.includes(s)):!!it.done;
-      return Object.assign({}, it, {
-        types,
-        scenes,
-        doneScenes,
-        doneTypes,
-        done: isDone,
-        type: it.type || (Array.isArray(types) && types[0]) || '',
-        scene: it.scene || (Array.isArray(scenes) && scenes[0]) || ''
-      });
-    });
+    state.items=(d.items||[]).map(normalizeStoredItem);
     if(Array.isArray(d.types)&&d.types.length)state.types=d.types;
     if(Array.isArray(d.scenes)&&d.scenes.length)state.scenes=d.scenes;
     if(Array.isArray(d.times)&&d.times.length)state.times=d.times;
@@ -121,11 +158,17 @@ function load(){
     if(d.autoInstallUpdate!==undefined)state.autoInstallUpdate=!!d.autoInstallUpdate;
     if(d.widgetRemoveDone!==undefined)state.widgetRemoveDone=!!d.widgetRemoveDone;
     if(d.showCostSummary!==undefined)state.showCostSummary=!!d.showCostSummary;
-    if(d.customBg&&typeof d.customBg==='object')state.customBg=Object.assign({type:'default',color:'#f2f5fb',image:'',opacity:80},d.customBg);
+    if(d.customBg&&typeof d.customBg==='object'){
+      state.customBg=Object.assign({type:'default',color:'#f2f5fb',image:'',opacity:80},d.customBg);
+      delete state.customBg.blur;
+    }
     else if(!state.customBg)state.customBg={type:'default',color:'#f2f5fb',image:'',opacity:80};
     state.trash=Array.isArray(d.trash)?d.trash:[]; if(d.hapticFeedback!==undefined)state.hapticFeedback=!!d.hapticFeedback;
     state.sortKey=d.sortKey||'默认'; state.sortAsc=d.sortAsc!==false;
     if(d.ai)state.ai=Object.assign({enabled:false,base:'',key:'',model:''},d.ai);
+    state.widget2x2=Array.isArray(d.widget2x2)?buildWidget2x2Items(d.widget2x2,state.items):defaultWidget2x2Items(state.items);
+    state.widget2x2Background=normalizeWidget2x2Background(d.widget2x2Background);
+    state.dataUpdatedAt=Number(d.dataUpdatedAt)||0;
     if(d.quadrantWidget&&typeof d.quadrantWidget==='object')state.quadrantWidget=d.quadrantWidget;
     state.trash = Array.isArray(d.trash) ? d.trash.filter(x => x && x.id !== 'trash-01' && x.id !== 'trash-02') : [];
   }}catch(e){}
@@ -134,6 +177,9 @@ function load(){
   } else {
     state.trash = state.trash.filter(x => x && x.id !== 'trash-01' && x.id !== 'trash-02');
   }
+  const trashIds=new Set(state.trash.map(x=>x&&x.id).filter(Boolean));
+  state.items=state.items.filter(x=>x&&!trashIds.has(x.id));
+  state.widget2x2=buildWidget2x2Items(state.widget2x2,state.items);
   syncFromNativeWidget();
 }
 
@@ -144,17 +190,12 @@ function syncToNativeWidget(){
   syncWidgetTimer=setTimeout(()=>{
     try{
       if(window.AndroidWidgetBridge&&window.AndroidWidgetBridge.syncData){
-        let toSend = state;
-        if(state.customBg && state.customBg.image){
-          toSend = Object.assign({}, state, {
-            customBg: {
-              type: state.customBg.type,
-              color: state.customBg.color,
-              opacity: state.customBg.opacity,
-              image: ''
-            }
-          });
-        }
+        const toSend = Object.assign({}, state, {
+          widget2x2: buildWidget2x2Items(state.widget2x2, state.items),
+          widget2x2Background: normalizeWidget2x2Background(state.widget2x2Background),
+          customBg: Object.assign({}, state.customBg || {})
+        });
+        delete toSend.customBg.blur;
         window.AndroidWidgetBridge.syncData(JSON.stringify(toSend));
       }
     }catch(e){}
@@ -167,27 +208,73 @@ function syncFromNativeWidget(){
       if(!raw)return;
       const d=JSON.parse(raw);
       if(d&&Array.isArray(d.items)){
+        const nativeUpdatedAt=Number(d.dataUpdatedAt)||0;
+        const localUpdatedAt=Number(state.dataUpdatedAt)||0;
+        if((localUpdatedAt>0&&nativeUpdatedAt===0)||
+          (localUpdatedAt>0&&nativeUpdatedAt>0&&nativeUpdatedAt<=localUpdatedAt))return;
         let changed=false;
+        const deletedIds=new Set((state.trash||[]).map(it=>it&&it.id).filter(Boolean));
+        (Array.isArray(d.trash)?d.trash:[]).forEach(it=>{ if(it&&it.id)deletedIds.add(it.id); });
+        const activeItems=state.items.filter(it=>it&&!deletedIds.has(it.id));
+        if(activeItems.length!==state.items.length){
+          state.items=activeItems;
+          changed=true;
+        }
         d.items.forEach(natIt=>{
+          if(!natIt||!natIt.id)return;
           const localIt=state.items.find(x=>x.id===natIt.id);
-          if(localIt&&localIt.done!==natIt.done){
-            localIt.done=natIt.done;
-            if(natIt.done){
-              localIt.doneScenes=itemScenes(localIt).slice();
-              localIt.doneTypes=itemTypes(localIt).slice();
-            }else{
-              localIt.doneScenes=[];
-              localIt.doneTypes=[];
+          if(localIt){
+            if(localIt.done!==!!natIt.done){
+              localIt.done=!!natIt.done;
+              if(localIt.done){
+                localIt.doneScenes=Array.isArray(natIt.doneScenes)?natIt.doneScenes.slice():itemScenes(localIt).slice();
+                localIt.doneTypes=Array.isArray(natIt.doneTypes)?natIt.doneTypes.slice():itemTypes(localIt).slice();
+              }else{
+                localIt.doneScenes=[];
+                localIt.doneTypes=[];
+              }
+              changed=true;
             }
+            if(natIt.title!==undefined&&localIt.title!==natIt.title){
+              localIt.title=natIt.title;
+              changed=true;
+            }
+            ['types','scenes','doneScenes','doneTypes','type','scene','time','note','cost','due','star','created'].forEach(key=>{
+              if(natIt[key]!==undefined&&JSON.stringify(localIt[key])!==JSON.stringify(natIt[key])){
+                localIt[key]=Array.isArray(natIt[key])?natIt[key].slice():natIt[key];
+                changed=true;
+              }
+            });
+          }else if(!deletedIds.has(natIt.id)){
+            state.items.push(normalizeStoredItem(natIt));
             changed=true;
           }
         });
+        if(Array.isArray(d.widget2x2)){
+          const nextWidget2x2=buildWidget2x2Items(d.widget2x2,state.items);
+          if(JSON.stringify(state.widget2x2||[])!==JSON.stringify(nextWidget2x2)){
+            state.widget2x2=nextWidget2x2;
+            changed=true;
+          }
+        }else if((state.widget2x2||[]).length===0){
+          state.widget2x2=defaultWidget2x2Items(state.items);
+          changed=true;
+        }
         if(d.quadrantWidget&&typeof d.quadrantWidget==='object'){
           state.quadrantWidget=d.quadrantWidget;
           changed=true;
         }
         if(d.widgetRemoveDone!==undefined&&state.widgetRemoveDone!==!!d.widgetRemoveDone){
           state.widgetRemoveDone=!!d.widgetRemoveDone;
+          changed=true;
+        }
+        if(nativeUpdatedAt>localUpdatedAt){
+          state.dataUpdatedAt=nativeUpdatedAt;
+          changed=true;
+        }
+        if(d.widget2x2Background&&typeof d.widget2x2Background==='object'&&
+          JSON.stringify(state.widget2x2Background||null)!==JSON.stringify(normalizeWidget2x2Background(d.widget2x2Background))){
+          state.widget2x2Background=normalizeWidget2x2Background(d.widget2x2Background);
           changed=true;
         }
         if(state.widgetRemoveDone&&state.quadrantWidget){
@@ -203,6 +290,7 @@ function syncFromNativeWidget(){
           localStorage.setItem(KEY,JSON.stringify(state));
           if(typeof render==='function') render();
           if(typeof renderQuadrantModal==='function') renderQuadrantModal();
+          if(typeof renderWidget2x2Settings==='function') renderWidget2x2Settings();
         }
       }
     }
@@ -2044,6 +2132,8 @@ function saveForm(){
   else {
     const newItem = Object.assign({id:uid(),done:false,doneScenes:[],doneTypes:[],created:Date.now()},g);
     state.items.push(newItem);
+    if(!Array.isArray(state.widget2x2)) state.widget2x2=[];
+    state.widget2x2.push({id:newItem.id});
     if(pendingQuadrantAddKey){
       addQuadrantItem(pendingQuadrantAddKey, newItem.title, newItem.id);
       pendingQuadrantAddKey = null;
@@ -2071,6 +2161,17 @@ function renderUpdateSettings(){
   const chkCost=$('#showCostSummary');
   if(chkCost) chkCost.checked=state.showCostSummary!==false;
 }
+function renderWidget2x2Settings(){
+  state.widget2x2Background=normalizeWidget2x2Background(state.widget2x2Background);
+  const opacity=$('#sliderWidget2x2Opacity');
+  const opacityVal=$('#valWidget2x2Opacity');
+  const blur=$('#sliderWidget2x2Blur');
+  const blurVal=$('#valWidget2x2Blur');
+  if(opacity) opacity.value=state.widget2x2Background.opacity;
+  if(opacityVal) opacityVal.textContent=state.widget2x2Background.opacity+'%';
+  if(blur) blur.value=state.widget2x2Background.blur;
+  if(blurVal) blurVal.textContent=state.widget2x2Background.blur+'dp';
+}
 
 function openSettings(){
   pushLayer();
@@ -2081,6 +2182,7 @@ function openSettings(){
   renderSetGroups();
   renderAiCfg();
   renderUpdateSettings();
+  renderWidget2x2Settings();
   $('#setMask').hidden=false;
   $('#setModal').hidden=false;
 }
@@ -3792,10 +3894,19 @@ function initSortable(){
     onChange(){ triggerHaptic('selection'); },
     onEnd(){
       triggerHaptic('medium');
-      $$('#content .item-row:not(.sec-item)').forEach((r,i)=>{
-        const it = state.items.find(x => x.id === r.dataset.item);
+      const orderedIds=$$('#content .item-row:not(.sec-item)').map(r=>r.dataset.item).filter(Boolean);
+      orderedIds.forEach((id,i)=>{
+        const it = state.items.find(x => x.id === id);
         if(it && !isItemDoneIn(it, state.groupBy, state.view.group)) it.order = i;
       });
+      if(state.view.name==='home'&&state.type==='全部'&&!state.search){
+        const orderedSet=new Set(orderedIds);
+        const oldOrder=Array.isArray(state.widget2x2)?state.widget2x2:[];
+        state.widget2x2=orderedIds.map(id=>({id}));
+        oldOrder.forEach(item=>{
+          if(item&&item.id&&!orderedSet.has(item.id))state.widget2x2.push({id:item.id});
+        });
+      }
       save();
     }
   });
@@ -3865,6 +3976,9 @@ function exportData(){
     showCostSummary: state.showCostSummary,
     hapticFeedback: state.hapticFeedback,
     customBg: state.customBg,
+    widget2x2: state.widget2x2,
+    widget2x2Background: state.widget2x2Background,
+    dataUpdatedAt: state.dataUpdatedAt,
     trash: state.trash || [],
     ai: state.ai,
     quadrantWidget: state.quadrantWidget
@@ -3918,18 +4032,7 @@ function exportData(){
   }
 }
 function applyImportedData(d){
-  state.items=(d.items||[]).map(it=>{
-    const types=itemTypes(it);
-    const scenes=itemScenes(it);
-    const doneScenes=Array.isArray(it.doneScenes)?it.doneScenes:(it.done?scenes.slice():[]);
-    const doneTypes=Array.isArray(it.doneTypes)?it.doneTypes:(it.done?types.slice():[]);
-    const isDone=scenes.length>0?scenes.every(s=>doneScenes.includes(s)):!!it.done;
-    return Object.assign({}, it, {
-      types, scenes, doneScenes, doneTypes, done: isDone,
-      type: it.type || (Array.isArray(types) && types[0]) || '',
-      scene: it.scene || (Array.isArray(scenes) && scenes[0]) || ''
-    });
-  });
+  state.items=(d.items||[]).map(normalizeStoredItem);
   if(Array.isArray(d.types)&&d.types.length)state.types=d.types;
   if(Array.isArray(d.scenes)&&d.scenes.length)state.scenes=d.scenes;
   if(Array.isArray(d.times)&&d.times.length)state.times=d.times;
@@ -3945,9 +4048,17 @@ function applyImportedData(d){
   if(d.widgetRemoveDone!==undefined)state.widgetRemoveDone=!!d.widgetRemoveDone;
   if(d.showCostSummary!==undefined)state.showCostSummary=!!d.showCostSummary;
   if(d.ai)state.ai=Object.assign({enabled:false,base:'',key:'',model:''},d.ai);
+  state.trash=Array.isArray(state.trash)?state.trash.filter(x=>x&&x.id):[];
+  const trashIds=new Set(state.trash.map(x=>x.id));
+  state.items=state.items.filter(x=>x&&!trashIds.has(x.id));
+  state.widget2x2=Array.isArray(d.widget2x2)?buildWidget2x2Items(d.widget2x2,state.items):defaultWidget2x2Items(state.items);
   if(d.quadrantWidget&&typeof d.quadrantWidget==='object')state.quadrantWidget=d.quadrantWidget;
-  if(d.customBg&&typeof d.customBg==='object')state.customBg=Object.assign({type:'default',color:'#f2f5fb',image:'',opacity:80},d.customBg);
+  if(d.customBg&&typeof d.customBg==='object'){
+    state.customBg=Object.assign({type:'default',color:'#f2f5fb',image:'',opacity:80},d.customBg);
+    delete state.customBg.blur;
+  }
   else if(!state.customBg)state.customBg={type:'default',color:'#f2f5fb',image:'',opacity:80};
+  state.widget2x2Background=normalizeWidget2x2Background(d.widget2x2Background);
   save();
   applyColorMode();
   applyCustomBg();
@@ -3956,6 +4067,7 @@ function applyImportedData(d){
   renderSetGroups();
   renderPalette();
   renderCustomBgSettings();
+  renderWidget2x2Settings();
   renderUpdateSettings();
 }
 
@@ -4008,7 +4120,7 @@ function importData(e){
   r.readAsText(f);
   e.target.value='';
 }
-function clearAll(){ confirmDlg('清空数据','确定清空全部数据？此操作不可撤销。',()=>{ state.items=[]; state.trash=[]; state.quadrantWidget={q1:[],q2:[],q3:[],q4:[]}; save(); render(); },'清空','delete'); }
+function clearAll(){ confirmDlg('清空数据','确定清空全部数据？此操作不可撤销。',()=>{ state.items=[]; state.trash=[]; state.widget2x2=[]; state.quadrantWidget={q1:[],q2:[],q3:[],q4:[]}; save(); render(); },'清空','delete'); }
 
 /* ========== 弹窗事件（一次性绑定） ========== */
 document.addEventListener('DOMContentLoaded',()=>{
@@ -4156,6 +4268,26 @@ document.addEventListener('DOMContentLoaded',()=>{
         });
         if(cleaned) renderQuadrantModal();
       }
+      save();
+    });
+  }
+  const widgetOpacity=$('#sliderWidget2x2Opacity');
+  const widgetOpacityVal=$('#valWidget2x2Opacity');
+  if(widgetOpacity){
+    widgetOpacity.addEventListener('input',e=>{
+      state.widget2x2Background=normalizeWidget2x2Background(state.widget2x2Background);
+      state.widget2x2Background.opacity=Math.max(10,Math.min(100,parseInt(e.target.value,10)||80));
+      if(widgetOpacityVal)widgetOpacityVal.textContent=state.widget2x2Background.opacity+'%';
+      save();
+    });
+  }
+  const widgetBlur=$('#sliderWidget2x2Blur');
+  const widgetBlurVal=$('#valWidget2x2Blur');
+  if(widgetBlur){
+    widgetBlur.addEventListener('input',e=>{
+      state.widget2x2Background=normalizeWidget2x2Background(state.widget2x2Background);
+      state.widget2x2Background.blur=Math.max(0,Math.min(30,parseInt(e.target.value,10)||0));
+      if(widgetBlurVal)widgetBlurVal.textContent=state.widget2x2Background.blur+'dp';
       save();
     });
   }

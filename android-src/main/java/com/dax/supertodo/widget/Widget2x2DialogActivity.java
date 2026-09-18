@@ -103,8 +103,10 @@ public class Widget2x2DialogActivity extends Activity {
 
         @JavascriptInterface
         public void saveWidgetData(final String json) {
+            // 背景图片 base64 单独落盘并从 JSON 中剥离，禁止 MB 级内容进入 widget 数据文件
+            final String cleanedJson = WidgetDataManager.extractWidgetBackgroundImage(Widget2x2DialogActivity.this, json);
             runOnUiThread(() -> {
-                WidgetDataManager.saveWidgetData(Widget2x2DialogActivity.this, json);
+                WidgetDataManager.saveWidgetData(Widget2x2DialogActivity.this, cleanedJson);
                 WidgetDataManager.notifyAllWidgets(Widget2x2DialogActivity.this);
             });
         }

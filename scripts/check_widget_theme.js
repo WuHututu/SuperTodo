@@ -17,9 +17,11 @@ const quadrantLayout = fs.readFileSync(layoutDir + 'widget_quadrant.xml', 'utf8'
 assert(manager.includes('optString("theme", "")'), '必须从同步 JSON 读取主题色');
 assert(manager.includes('theme.matches("^#[0-9a-fA-F]{6}$")'), '主题色必须校验为六位十六进制');
 assert(manager.includes('getThemedCheckedIcon'), '必须保留白色对勾并只替换圆形主色');
-assert(widget2x2.includes('setTextColor(R.id.widget_2x2_count, themeColor)'), '2x2 数量徽标必须跟随主题色');
-assert(widget2x2.includes('setTextColor(R.id.btn_2x2_complete, themeColor)'), '2x2 完成按钮必须跟随主题色');
-assert(/id="@\+id\/btn_2x2_complete"[\s\S]*?background="@drawable\/widget_tag_bg"/.test(widget2x2Layout), '2x2 完成按钮必须与展开清单使用相同背景');
+assert(manager.includes('getWidgetBackgroundColor'), '必须从同步 JSON 计算小组件背景色');
+assert(manager.includes('optInt("opacity", 80)'), '2x2 背景必须读取透明度配置');
+assert(manager.includes('optInt("blur", 12)'), '2x2 背景必须读取模糊度配置');
+assert(widget2x2.includes('setImageViewBitmap(R.id.widget_2x2_bg'), '2x2 必须使用动态背景 bitmap');
+assert(widget2x2Layout.includes('android:id="@+id/widget_2x2_bg"'), '2x2 布局必须保留动态背景层');
 assert(!quadrantLayout.includes('android:background="#FFFFFF"'), '四象限方向标签背景不能硬编码为日间白色');
 
 for (const source of [widget4x2, widget4x4, service]) {

@@ -20,37 +20,29 @@ public class WidgetBridge {
 
     @JavascriptInterface
     public void syncData(String json) {
-        if (activity == null) return;
+        if (activity == null || json == null || json.isEmpty()) return;
         try {
             String oldJson = WidgetDataManager.getWidgetData(activity);
-            if (oldJson != null && !oldJson.isEmpty()) {
-                org.json.JSONObject oldObj = new org.json.JSONObject(oldJson);
-                org.json.JSONArray old2x2 = oldObj.optJSONArray("widget2x2");
-                if (old2x2 != null && old2x2.length() > 0) {
-                    org.json.JSONObject newObj = new org.json.JSONObject(json);
-                    if (!newObj.has("widget2x2")) {
-                        org.json.JSONArray newItems = newObj.optJSONArray("items");
-                        if (newItems != null) {
-                            java.util.Map<String, Boolean> statusMap = new java.util.HashMap<>();
-                            for (int i = 0; i < newItems.length(); i++) {
-                                org.json.JSONObject it = newItems.optJSONObject(i);
-                                if (it != null) {
-                                    statusMap.put(it.optString("id"), it.optBoolean("done", false));
-                                }
-                            }
-                            for (int j = 0; j < old2x2.length(); j++) {
-                                org.json.JSONObject w = old2x2.optJSONObject(j);
-                                if (w != null && statusMap.containsKey(w.optString("id"))) {
-                                    w.put("done", statusMap.get(w.optString("id")));
-                                }
-                            }
-                        }
-                        newObj.put("widget2x2", old2x2);
-                        json = newObj.toString();
-                    }
-                }
+            org.json.JSONObject newObj = new org.json.JSONObject(json);
+            long newUpdatedAt = newObj.optLong("dataUpdatedAt", 0L);
+            org.json.JSONObject oldObj = oldJson == null || oldJson.isEmpty()
+                    ? null : new org.json.JSONObject(oldJson);
+            long oldUpdatedAt = oldObj == null ? 0L : oldObj.optLong("dataUpdatedAt", 0L);
+            if (oldUpdatedAt > newUpdatedAt) {
+                return;
             }
+            if (!newObj.has("dataUpdatedAt")) {
+                newObj.put("dataUpdatedAt", System.currentTimeMillis());
+            }
+            if ((!newObj.has("widget2x2Background") || newObj.isNull("widget2x2Background"))
+                    && oldObj != null && oldObj.has("widget2x2Background")
+                    && !oldObj.isNull("widget2x2Background")) {
+                newObj.put("widget2x2Background", oldObj.get("widget2x2Background"));
+            }
+            json = newObj.toString();
         } catch (Exception ignore) {}
+        // 背景图片 base64 体积可达 MB 级，单独写入图片文件并从 JSON 中剥离，避免每次刷新都整体解析
+        json = WidgetDataManager.extractWidgetBackgroundImage(activity, json);
         WidgetDataManager.saveWidgetData(activity, json);
         WidgetDataManager.notifyAllWidgets(activity);
     }

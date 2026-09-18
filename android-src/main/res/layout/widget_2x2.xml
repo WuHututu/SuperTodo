@@ -1,7 +1,214 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_2x2_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center_vertical" android:background="@drawable/widget_bg" android:padding="10dp">
-<LinearLayout android:id="@+id/widget_2x2_row1" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:visibility="gone"><ImageView android:id="@+id/widget_2x2_check1" android:layout_width="22dp" android:layout_height="22dp" android:padding="2dp" android:src="@drawable/widget_ic_check_box_unchecked"/><TextView android:id="@+id/widget_2x2_title1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="6dp" android:maxLines="1" android:ellipsize="end" android:textColor="@color/widget_text_primary" android:textSize="12sp"/></LinearLayout>
-<LinearLayout android:id="@+id/widget_2x2_row2" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:visibility="gone"><ImageView android:id="@+id/widget_2x2_check2" android:layout_width="22dp" android:layout_height="22dp" android:padding="2dp" android:src="@drawable/widget_ic_check_box_unchecked"/><TextView android:id="@+id/widget_2x2_title2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="6dp" android:maxLines="1" android:ellipsize="end" android:textColor="@color/widget_text_primary" android:textSize="12sp"/></LinearLayout>
-<LinearLayout android:id="@+id/widget_2x2_row3" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:visibility="gone"><ImageView android:id="@+id/widget_2x2_check3" android:layout_width="22dp" android:layout_height="22dp" android:padding="2dp" android:src="@drawable/widget_ic_check_box_unchecked"/><TextView android:id="@+id/widget_2x2_title3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="6dp" android:maxLines="1" android:ellipsize="end" android:textColor="@color/widget_text_primary" android:textSize="12sp"/></LinearLayout>
-<TextView android:id="@+id/widget_2x2_empty_view" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:text="暂无未完成事项" android:textColor="@color/widget_text_secondary" android:textSize="12sp" android:visibility="gone"/>
-</LinearLayout>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_2x2_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/widget_2x2_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY" />
+
+    <LinearLayout
+        android:id="@+id/widget_2x2_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipChildren="true"
+        android:gravity="top"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <LinearLayout
+            android:id="@+id/widget_2x2_row1"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/widget_2x2_check1"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:padding="2dp"
+                android:src="@drawable/widget_2x2_checkbox_unchecked" />
+
+            <TextView
+                android:id="@+id/widget_2x2_title1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_2x2_row2"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/widget_2x2_check2"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:padding="2dp"
+                android:src="@drawable/widget_2x2_checkbox_unchecked" />
+
+            <TextView
+                android:id="@+id/widget_2x2_title2"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_2x2_row3"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/widget_2x2_check3"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:padding="2dp"
+                android:src="@drawable/widget_2x2_checkbox_unchecked" />
+
+            <TextView
+                android:id="@+id/widget_2x2_title3"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_2x2_row4"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/widget_2x2_check4"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:padding="2dp"
+                android:src="@drawable/widget_2x2_checkbox_unchecked" />
+
+            <TextView
+                android:id="@+id/widget_2x2_title4"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_2x2_row5"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/widget_2x2_check5"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:padding="2dp"
+                android:src="@drawable/widget_2x2_checkbox_unchecked" />
+
+            <TextView
+                android:id="@+id/widget_2x2_title5"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_2x2_row6"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/widget_2x2_check6"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:padding="2dp"
+                android:src="@drawable/widget_2x2_checkbox_unchecked" />
+
+            <TextView
+                android:id="@+id/widget_2x2_title6"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_2x2_row7"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/widget_2x2_check7"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:padding="2dp"
+                android:src="@drawable/widget_2x2_checkbox_unchecked" />
+
+            <TextView
+                android:id="@+id/widget_2x2_title7"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/widget_2x2_empty_view"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:gravity="center"
+            android:text="暂无未完成事项"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

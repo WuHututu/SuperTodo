@@ -19,10 +19,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class WidgetDataManager {
     private static final String FILE_NAME = "supertodo_widget_data.json";
+    private static final String BG_FILE_NAME = "supertodo_widget_bg.img";
     private static final String PREF_NAME = "supertodo_widget_prefs";
 
     public static final String ACTION_WIDGET_CLICK = "com.dax.supertodo.ACTION_WIDGET_CLICK";
@@ -41,6 +46,12 @@ public class WidgetDataManager {
     private static volatile String sCachedJson = null;
     private static volatile int sCheckedIconColor = 0;
     private static volatile android.graphics.Bitmap sCheckedIcon = null;
+    private static volatile int sWidgetBgHash = 0;
+    private static volatile int sWidgetBgLength = 0;
+    private static volatile android.graphics.Bitmap sWidgetBgImage = null;
+    private static volatile long sWidgetBgImageTime = 0L;
+    private static volatile int sWidgetBgImageWidth = 0;
+    private static volatile int sWidgetBgImageHeight = 0;
     private static final java.util.concurrent.ExecutorService sIoExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
 
     public static synchronized void saveWidgetData(Context context, String json) {
@@ -61,6 +72,73 @@ public class WidgetDataManager {
                 }
             } catch (Exception ignore) {}
         });
+    }
+
+    /**
+     * 保存 2x2 小部件的背景图片：接受 data:image/...;base64,xxx 数据 URL 或纯 base64，解码后用 .tmp + rename 原子写入独立文件。
+     * 入参为空或解码失败时返回 false 且不覆盖已存在的图片；与上次写入内容相同则直接跳过，避免每次防抖保存都重写文件。
+     * @param context 上下文
+     * @param base64DataUrl 背景图片的 base64 内容（可带 data URL 前缀）
+     * @return 是否已写入或无需重复写入
+     */
+    public static boolean saveWidgetBackgroundImage(Context context, String base64DataUrl) {
+        if (context == null || base64DataUrl == null || base64DataUrl.isEmpty()) return false;
+        String base64 = base64DataUrl;
+        if (base64.startsWith("data:")) {
+            int comma = base64.indexOf(',');
+            if (comma < 0) return false;
+            base64 = base64.substring(comma + 1);
+        }
+        if (base64.length() == sWidgetBgLength && base64.hashCode() == sWidgetBgHash) return true;
+        byte[] bytes;
+        try {
+            bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+        } catch (Exception ignore) {
+            return false;
+        }
+        if (bytes == null || bytes.length == 0) return false;
+        sWidgetBgLength = base64.length();
+        sWidgetBgHash = base64.hashCode();
+        sWidgetBgImage = null;
+        final Context appContext = context.getApplicationContext();
+        final byte[] data = bytes;
+        sIoExecutor.execute(() -> {
+            try {
+                File dir = appContext.getFilesDir();
+                File file = new File(dir, BG_FILE_NAME);
+                File tempFile = new File(dir, BG_FILE_NAME + ".tmp");
+                FileOutputStream fos = new FileOutputStream(tempFile);
+                fos.write(data);
+                fos.flush();
+                fos.close();
+                if (tempFile.exists()) {
+                    tempFile.renameTo(file);
+                }
+            } catch (Exception ignore) {}
+        });
+        return true;
+    }
+
+    /**
+     * 从待落盘的 widget JSON 中取出 customBg.image 背景图片交给 saveWidgetBackgroundImage 单独存文件，并返回已清空该字段的 JSON，
+     * 防止 MB 级 base64 进入每次刷新都要整体重新解析的数据文件。
+     * @param context 上下文
+     * @param json 前端同步过来的完整 JSON
+     * @return 去掉图片内容后的 JSON，无需处理或解析失败时原样返回
+     */
+    public static String extractWidgetBackgroundImage(Context context, String json) {
+        if (context == null || json == null || json.isEmpty()) return json;
+        try {
+            JSONObject root = new JSONObject(json);
+            JSONObject customBg = root.optJSONObject("customBg");
+            String image = customBg != null ? customBg.optString("image", "") : "";
+            if (image.isEmpty()) return json;
+            saveWidgetBackgroundImage(context, image);
+            customBg.put("image", "");
+            return root.toString();
+        } catch (Exception ignore) {
+            return json;
+        }
     }
 
     public static synchronized String getWidgetData(Context context) {
@@ -87,11 +165,21 @@ public class WidgetDataManager {
         if (json.isEmpty()) return list;
         try {
             JSONObject root = new JSONObject(json);
+            Set<String> trashIds = new HashSet<>();
+            JSONArray trash = root.optJSONArray("trash");
+            if (trash != null) {
+                for (int i = 0; i < trash.length(); i++) {
+                    JSONObject item = trash.optJSONObject(i);
+                    if (item != null && !item.optString("id", "").isEmpty()) {
+                        trashIds.add(item.optString("id"));
+                    }
+                }
+            }
             JSONArray items = root.optJSONArray("items");
             if (items != null) {
                 for (int i = 0; i < items.length(); i++) {
                     JSONObject obj = items.optJSONObject(i);
-                    if (obj != null) {
+                    if (obj != null && !trashIds.contains(obj.optString("id", ""))) {
                         list.add(TodoItem.fromJson(obj));
                     }
                 }
@@ -169,6 +257,127 @@ public class WidgetDataManager {
         return fallback;
     }
 
+    public static int getWidgetBackgroundColor(Context context) {
+        boolean dark = context != null && (context.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        int fallback = android.graphics.Color.parseColor(dark ? "#111318" : "#f2f5fb");
+        if (context == null) return fallback;
+        try {
+            JSONObject root = new JSONObject(getWidgetData(context));
+            JSONObject widgetBackground = root.optJSONObject("widget2x2Background");
+            int opacity = widgetBackground != null ? widgetBackground.optInt("opacity", 80) : 80;
+            String theme = root.optString("theme", "");
+            int color = isHexColor(theme) ? android.graphics.Color.parseColor(theme) : fallback;
+            int alpha = Math.max(0, Math.min(100, opacity)) * 255 / 100;
+            return android.graphics.Color.argb(
+                    alpha,
+                    android.graphics.Color.red(color),
+                    android.graphics.Color.green(color),
+                    android.graphics.Color.blue(color)
+            );
+        } catch (Exception ignore) {
+            return fallback;
+        }
+    }
+
+    public static int getWidgetBackgroundBlur(Context context) {
+        if (context == null) return 12;
+        try {
+            JSONObject root = new JSONObject(getWidgetData(context));
+            JSONObject widgetBackground = root.optJSONObject("widget2x2Background");
+            return Math.max(0, Math.min(30, widgetBackground != null ? widgetBackground.optInt("blur", 12) : 12));
+        } catch (Exception ignore) {
+            return 12;
+        }
+    }
+
+    public static android.graphics.Bitmap getWidgetBackgroundBitmap(Context context, int widthDp, int heightDp) {
+        int width = Math.max(1, Math.min(dpToPx(context, Math.max(widthDp, 1)), 512));
+        int height = Math.max(1, Math.min(dpToPx(context, Math.max(heightDp, 1)), 512));
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        int bgColor = getWidgetBackgroundColor(context);
+        float radius = dpToPx(context, 18);
+        float stroke = Math.max(1, dpToPx(context, 1));
+        android.graphics.RectF rect = new android.graphics.RectF(stroke / 2, stroke / 2, width - stroke / 2, height - stroke / 2);
+
+        paint.setStyle(android.graphics.Paint.Style.FILL);
+        paint.setColor(bgColor);
+        int blurPx = dpToPx(context, getWidgetBackgroundBlur(context));
+        // 读取背景类型：只有显式选择 image 且图片文件可解码时才使用图片背景
+        String bgType = "theme";
+        try {
+            JSONObject widgetBackground = new JSONObject(getWidgetData(context)).optJSONObject("widget2x2Background");
+            if (widgetBackground != null) bgType = widgetBackground.optString("type", "theme");
+        } catch (Exception ignore) {}
+        android.graphics.Bitmap bgImage = "image".equals(bgType) ? loadWidgetBackgroundImage(context, width, height) : null;
+        if (bgImage != null) {
+            // 图片先 centerCrop 铺满画布，再叠一层主题色保证文字可读，最后用同一个圆角+羽化做 DST_IN 裁切，边缘效果与纯色分支一致
+            int layer = canvas.saveLayer(new android.graphics.RectF(0, 0, width, height), null);
+            float scale = Math.max(width / (float) bgImage.getWidth(), height / (float) bgImage.getHeight());
+            float drawW = bgImage.getWidth() * scale;
+            float drawH = bgImage.getHeight() * scale;
+            canvas.drawBitmap(bgImage, null, new android.graphics.RectF(
+                    (width - drawW) / 2F, (height - drawH) / 2F, (width + drawW) / 2F, (height + drawH) / 2F), paint);
+            canvas.drawRect(0, 0, width, height, paint);
+            android.graphics.Paint maskPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+            maskPaint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
+            if (blurPx > 0) {
+                maskPaint.setMaskFilter(new android.graphics.BlurMaskFilter(blurPx, android.graphics.BlurMaskFilter.Blur.NORMAL));
+            }
+            canvas.drawRoundRect(rect, radius, radius, maskPaint);
+            canvas.restoreToCount(layer);
+        } else {
+            if (blurPx > 0) {
+                paint.setMaskFilter(new android.graphics.BlurMaskFilter(blurPx, android.graphics.BlurMaskFilter.Blur.NORMAL));
+            }
+            canvas.drawRoundRect(rect, radius, radius, paint);
+            paint.setMaskFilter(null);
+        }
+
+        try {
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(stroke);
+            paint.setColor(androidx.core.content.ContextCompat.getColor(context, R.color.widget_stroke));
+            canvas.drawRoundRect(rect, radius, radius, paint);
+        } catch (Exception ignore) {}
+
+        return bitmap;
+    }
+
+    /**
+     * 读取并缓存 2x2 小部件的背景图片位图：按文件修改时间与目标像素尺寸复用缓存，避免每次 onUpdate 都重新解码 MB 级图片。
+     * @param context 上下文
+     * @param width 目标画布宽度（px）
+     * @param height 目标画布高度（px）
+     * @return 解码后的位图，图片文件不存在或解码失败时返回 null 以回退到主题色
+     */
+    private static synchronized android.graphics.Bitmap loadWidgetBackgroundImage(Context context, int width, int height) {
+        File file = new File(context.getFilesDir(), BG_FILE_NAME);
+        if (!file.exists()) return null;
+        long modified = file.lastModified();
+        if (sWidgetBgImage != null && sWidgetBgImageTime == modified && sWidgetBgImageWidth == width && sWidgetBgImageHeight == height) {
+            return sWidgetBgImage;
+        }
+        android.graphics.BitmapFactory.Options bounds = new android.graphics.BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        android.graphics.BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+        int sampleSize = 1;
+        while (bounds.outWidth / (sampleSize * 2) >= width && bounds.outHeight / (sampleSize * 2) >= height) {
+            sampleSize *= 2;
+        }
+        android.graphics.BitmapFactory.Options options = new android.graphics.BitmapFactory.Options();
+        options.inSampleSize = sampleSize;
+        android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+        if (bitmap == null) return null;
+        sWidgetBgImageTime = modified;
+        sWidgetBgImageWidth = width;
+        sWidgetBgImageHeight = height;
+        sWidgetBgImage = bitmap;
+        return bitmap;
+    }
+
     public static synchronized android.graphics.Bitmap getThemedCheckedIcon(int color) {
         if (sCheckedIcon != null && sCheckedIconColor == color) return sCheckedIcon;
         android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(48, 48, android.graphics.Bitmap.Config.ARGB_8888);
@@ -207,7 +416,7 @@ public class WidgetDataManager {
                 if (obj != null && itemId.equals(obj.optString("id"))) {
                     boolean cur = obj.optBoolean("done", false);
                     nextState = !cur;
-                    obj.put("done", nextState);
+                    updateDoneMetadata(obj, nextState);
                     updated = true;
                     break;
                 }
@@ -225,25 +434,15 @@ public class WidgetDataManager {
                             if (removeDone && nextState) {
                                 arr.remove(j);
                             } else {
-                                qObj.put("done", nextState);
+                                updateDoneMetadata(qObj, nextState);
                             }
                             updated = true;
                         }
                     }
                 }
             }
-            // 同步更新 2x2 自定义清单中包含的同 ID 事项状态
-            JSONArray w2 = root.optJSONArray("widget2x2");
-            if (w2 != null) {
-                for (int m = 0; m < w2.length(); m++) {
-                    JSONObject wObj = w2.optJSONObject(m);
-                    if (wObj != null && itemId.equals(wObj.optString("id"))) {
-                        wObj.put("done", nextState);
-                        updated = true;
-                    }
-                }
-            }
             if (updated) {
+                root.put("dataUpdatedAt", System.currentTimeMillis());
                 saveWidgetData(context, root.toString());
                 return true;
             }
@@ -259,32 +458,60 @@ public class WidgetDataManager {
         try {
             JSONObject root = new JSONObject(json);
             JSONArray arr = root.optJSONArray("widget2x2");
-            if (arr != null && arr.length() > 0) {
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject obj = arr.optJSONObject(i);
-                    if (obj != null) {
-                        TodoItem item = TodoItem.fromJson(obj); if (!item.done) list.add(item);
-                    }
-                }
-                return list;
-            }
-            // 若尚无 widget2x2，默认从 items 取未完成事项初始化
             JSONArray items = root.optJSONArray("items");
-            if (items != null) {
-                JSONArray new2x2 = new JSONArray();
-                for (int i = 0; i < items.length(); i++) {
-                    JSONObject obj = items.optJSONObject(i);
-                    if (obj != null && !obj.optBoolean("done", false)) {
-                        TodoItem it = TodoItem.fromJson(obj);
-                        list.add(it);
-                        new2x2.put(obj);
-                        if (list.size() >= 10) break;
+            Set<String> trashIds = new HashSet<>();
+            JSONArray trash = root.optJSONArray("trash");
+            if (trash != null) {
+                for (int i = 0; i < trash.length(); i++) {
+                    JSONObject item = trash.optJSONObject(i);
+                    if (item != null && !item.optString("id", "").isEmpty()) {
+                        trashIds.add(item.optString("id"));
                     }
                 }
-                if (new2x2.length() > 0) {
-                    root.put("widget2x2", new2x2);
-                    saveWidgetData(context, root.toString());
+            }
+            Map<String, JSONObject> itemById = new HashMap<>();
+            if (items != null) {
+                for (int i = 0; i < items.length(); i++) {
+                    JSONObject item = items.optJSONObject(i);
+                    if (item != null && !trashIds.contains(item.optString("id", ""))
+                            && !item.optString("id", "").isEmpty()) {
+                        itemById.put(item.optString("id"), item);
+                    }
                 }
+            }
+            List<String> orderedIds = new ArrayList<>();
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject entry = arr.optJSONObject(i);
+                    String id = entry != null ? entry.optString("id", "") : arr.optString(i, "");
+                    if (itemById.containsKey(id) && !orderedIds.contains(id)) {
+                        orderedIds.add(id);
+                    }
+                }
+            }
+            if (items != null) {
+                for (int i = 0; i < items.length(); i++) {
+                    JSONObject item = items.optJSONObject(i);
+                    String id = item != null ? item.optString("id", "") : "";
+                    if (item != null && !item.optBoolean("done", false) && !orderedIds.contains(id)) {
+                        orderedIds.add(id);
+                    }
+                }
+            }
+            for (String id : orderedIds) {
+                JSONObject item = itemById.get(id);
+                if (item != null && !item.optBoolean("done", false)) {
+                    list.add(TodoItem.fromJson(item));
+                }
+            }
+            if ((arr == null || arr.length() == 0) && !orderedIds.isEmpty()) {
+                JSONArray new2x2 = new JSONArray();
+                for (String id : orderedIds) {
+                    new2x2.put(new JSONObject().put("id", id));
+                }
+                root.put("widget2x2", new2x2);
+                root.put("dataUpdatedAt", System.currentTimeMillis());
+                saveWidgetData(context, root.toString());
             }
         } catch (Exception ignore) {}
         return list;
@@ -308,24 +535,15 @@ public class WidgetDataManager {
             String completedId = null;
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject obj = arr.optJSONObject(i);
-                if (obj != null && !obj.optBoolean("done", false)) {
-                    obj.put("done", true);
-                    completedId = obj.optString("id");
+                String id = obj != null ? obj.optString("id", "") : arr.optString(i, "");
+                JSONObject item = findItem(root.optJSONArray("items"), id);
+                if (item != null && !item.optBoolean("done", false)) {
+                    updateDoneMetadata(item, true);
+                    completedId = id;
                     break;
                 }
             }
             if (completedId != null) {
-                // 同步更新 items
-                JSONArray items = root.optJSONArray("items");
-                if (items != null) {
-                    for (int j = 0; j < items.length(); j++) {
-                        JSONObject it = items.optJSONObject(j);
-                        if (it != null && completedId.equals(it.optString("id"))) {
-                            it.put("done", true);
-                            break;
-                        }
-                    }
-                }
                 // 同步更新四象限
                 JSONObject qw = root.optJSONObject("quadrantWidget");
                 if (qw != null) {
@@ -336,11 +554,12 @@ public class WidgetDataManager {
                         for (int k = 0; k < qArr.length(); k++) {
                             JSONObject qObj = qArr.optJSONObject(k);
                             if (qObj != null && completedId.equals(qObj.optString("id"))) {
-                                qObj.put("done", true);
+                                updateDoneMetadata(qObj, true);
                             }
                         }
                     }
                 }
+                root.put("dataUpdatedAt", System.currentTimeMillis());
                 saveWidgetData(context, root.toString());
                 return true;
             }
@@ -530,7 +749,7 @@ public class WidgetDataManager {
                     if (removeDone && nextState) {
                         arr.remove(i);
                     } else {
-                        obj.put("done", nextState);
+                        updateDoneMetadata(obj, nextState);
                     }
                     updated = true;
                     break;
@@ -543,7 +762,7 @@ public class WidgetDataManager {
                     for (int j = 0; j < rootItems.length(); j++) {
                         JSONObject rootIt = rootItems.optJSONObject(j);
                         if (rootIt != null && itemId.equals(rootIt.optString("id"))) {
-                            rootIt.put("done", nextState);
+                            updateDoneMetadata(rootIt, nextState);
                             break;
                         }
                     }
@@ -560,11 +779,12 @@ public class WidgetDataManager {
                             if (removeDone && nextState) {
                                 otherArr.remove(k);
                             } else {
-                                oObj.put("done", nextState);
+                                updateDoneMetadata(oObj, nextState);
                             }
                         }
                     }
                 }
+                root.put("dataUpdatedAt", System.currentTimeMillis());
                 saveWidgetData(context, root.toString());
                 return true;
             }
@@ -647,5 +867,50 @@ public class WidgetDataManager {
         } catch (Throwable t) {
             return defaultHeight;
         }
+    }
+
+    private static boolean isHexColor(String value) {
+        return value != null && value.matches("^#[0-9a-fA-F]{6}$");
+    }
+
+    private static void updateDoneMetadata(JSONObject item, boolean done) {
+        if (item == null) return;
+        try {
+            item.put("done", done);
+            JSONArray scenes = item.optJSONArray("scenes");
+            if (scenes == null && !item.optString("scene", "").isEmpty()) {
+                scenes = new JSONArray().put(item.optString("scene"));
+            }
+            JSONArray types = item.optJSONArray("types");
+            if (types == null && !item.optString("type", "").isEmpty()) {
+                types = new JSONArray().put(item.optString("type"));
+            }
+            JSONArray doneScenes = new JSONArray();
+            JSONArray doneTypes = new JSONArray();
+            if (done) {
+                if (scenes != null) {
+                    for (int i = 0; i < scenes.length(); i++) doneScenes.put(scenes.optString(i));
+                }
+                if (types != null) {
+                    for (int i = 0; i < types.length(); i++) doneTypes.put(types.optString(i));
+                }
+            }
+            item.put("doneScenes", doneScenes);
+            item.put("doneTypes", doneTypes);
+        } catch (Exception ignore) {}
+    }
+
+    private static JSONObject findItem(JSONArray items, String itemId) {
+        if (items == null || itemId == null || itemId.isEmpty()) return null;
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject item = items.optJSONObject(i);
+            if (item != null && itemId.equals(item.optString("id"))) return item;
+        }
+        return null;
+    }
+
+    private static int dpToPx(Context context, int dp) {
+        float density = context != null ? context.getResources().getDisplayMetrics().density : 1F;
+        return Math.round(dp * density);
     }
 }
