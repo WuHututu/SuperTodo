@@ -55,6 +55,9 @@ public class WidgetDataManager {
     private static volatile int sWidgetContentColor = 0;
     private static volatile android.graphics.Bitmap sWidgetBgAvgSource = null;
     private static volatile int sWidgetBgAvgColor = 0;
+    // 盒式模糊的工位缓冲，按最大尺寸跨次复用，免得每次刷新都 new 出几百 KB 垃圾；只在主线程用
+    private static int[] sBlurPixels = null;
+    private static int[] sBlurTemp = null;
     private static final java.util.concurrent.ExecutorService sIoExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
 
     public static synchronized void saveWidgetData(Context context, String json) {
@@ -295,12 +298,12 @@ public class WidgetDataManager {
     }
 
     /**
-     * 生成 2x2 小组件的背景层位图（带透明圆角四角）。两个滑块语义：
+     * 生成 2x2 小组件的背景层位图（四角透明，能透出桌面壁纸）。两个滑块语义：
      * opacity = 背景层自身的 alpha —— 主题模式是纯色块的 alpha，图片模式是图片本身的 alpha，桌面壁纸从下面透出来；
-     * blur = 图片自身的高斯模糊半径（降采样 + 双线性放大近似，零依赖、任何 API 都能跑）——
+     * blur = 图片自身的高斯模糊半径（3 次可分离盒式模糊 ≈ 高斯，纯 Java，见 blurBitmap）——
      *        主题模式没有可糊的对象，改它不产生视觉效果，这是预期行为。
-     * 图片模式不再叠任何主题色遮罩，也不再画一圈描边；圆角一律用硬边抗锯齿 DST_IN 裁切，
-     * 不能拿模糊滤镜当圆角蒙版，否则模糊会把 alpha 向圆角外扩散，四角溢出半透明填充。
+     * 图片模式不叠任何主题色遮罩，也不画一圈描边。两条分支共用同一条被真机验证过的圆角路径：
+     * drawRoundRect + 抗锯齿的 Paint，纯色分支填颜色，图片分支把（模糊后的）位图做成 BitmapShader 填进去。
      * 副作用：顺手记录本次卡面应使用的文字色，供 getWidgetContentColor 读取。
      * @param context 上下文
      * @param widthDp 小部件宽度（dp）
@@ -336,37 +339,30 @@ public class WidgetDataManager {
         }
 
         int blurPx = dpToPx(context, getWidgetBackgroundBlur(context));
-        android.graphics.Bitmap blurred = bgImage;
-        if (blurPx > 0) {
-            // 降采样比例 f = 1 + blurPx / 4，clamp 到 [1, 32]；放大时用双线性过滤，一次降采样+放大对背景模糊足够
-            float factor = Math.max(1F, Math.min(32F, 1 + blurPx / 4F));
-            blurred = android.graphics.Bitmap.createScaledBitmap(bgImage,
-                    Math.max(1, Math.round(bgImage.getWidth() / factor)),
-                    Math.max(1, Math.round(bgImage.getHeight() / factor)), true);
-            paint.setFilterBitmap(true);
-        }
+        android.graphics.Bitmap blurred = blurBitmap(bgImage, blurPx);
         sWidgetContentColor = contentColorFor(averageColorOf(blurred));
 
-        int layer = canvas.saveLayer(new android.graphics.RectF(0, 0, width, height), null);
-        paint.setAlpha(Math.max(0, Math.min(100, opacity)) * 255 / 100);
-        // 模糊会让位图边缘 alpha 衰减，centerCrop 时目标矩形每边向外扩 blurPx 做 overscan，保证圆角内侧不留透明边
-        float overscan = blurPx;
-        float targetW = width + overscan * 2;
-        float targetH = height + overscan * 2;
+        // 圆角靠 drawRoundRect 自己的抗锯齿，填充内容换成模糊后位图的 shader：不需要图层、不需要混合模式，
+        // 也不用裁剪路径（裁剪不带抗锯齿，圆角边上全是锯齿）
+        android.graphics.BitmapShader shader = new android.graphics.BitmapShader(
+                blurred, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP);
+        // 模糊会让位图边缘的内容向内衰减（铺开约 2σ），centerCrop 的目标矩形每边向外扩 2 倍 blurPx 做 overscan，于是圆角内侧采到的一圈始终在位图内部，碰不到 CLAMP 复制出来的边缘像素
+        float overscan = blurPx * 2F;
+        float targetW = width + overscan * 2F;
+        float targetH = height + overscan * 2F;
         float scale = Math.max(targetW / blurred.getWidth(), targetH / blurred.getHeight());
-        float drawW = blurred.getWidth() * scale;
-        float drawH = blurred.getHeight() * scale;
-        canvas.drawBitmap(blurred, null, new android.graphics.RectF(
-                (targetW - drawW) / 2F - overscan, (targetH - drawH) / 2F - overscan,
-                (targetW + drawW) / 2F - overscan, (targetH + drawH) / 2F - overscan), paint);
-        // 裁切前必须把 alpha 复位成 255：在 globalAlpha < 255 时做 DST_IN，圆角外像素的 alpha 会等于填充 alpha，
-        // 结果 opacity=100% 时四角反而透不出壁纸
-        paint.setAlpha(255);
-        // 裁切用新建的 paint：只带 DST_IN 与抗锯齿，没有 MaskFilter、没有半透明
-        android.graphics.Paint clipPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        clipPaint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
-        canvas.drawRoundRect(new android.graphics.RectF(0, 0, width, height), radius, radius, clipPaint);
-        canvas.restoreToCount(layer);
+        // shader 的局部矩阵是「shader 自身坐标 -> 画布坐标」，所以直接按 centerCrop 的放大倍率摆位即可
+        android.graphics.Matrix matrix = new android.graphics.Matrix();
+        matrix.setScale(scale, scale);
+        matrix.postTranslate((targetW - blurred.getWidth() * scale) / 2F - overscan,
+                (targetH - blurred.getHeight() * scale) / 2F - overscan);
+        shader.setLocalMatrix(matrix);
+        paint.setShader(shader);
+        // 透明度是背景层自身的 alpha，paint 的 alpha 会直接调制 shader 采样出来的颜色
+        paint.setAlpha(Math.max(0, Math.min(100, opacity)) * 255 / 100);
+        // 兜住 centerCrop 残余的放大倍率（源图本身比卡面小时才会 >1），采样平滑靠 paint 的这个开关
+        paint.setFilterBitmap(true);
+        canvas.drawRoundRect(new android.graphics.RectF(0, 0, width, height), radius, radius, paint);
         return bitmap;
     }
 
@@ -460,6 +456,87 @@ public class WidgetDataManager {
         sWidgetBgImageHeight = height;
         sWidgetBgImage = bitmap;
         return bitmap;
+    }
+
+    /**
+     * 毛玻璃级高斯模糊，纯 Java：3 次可分离盒式模糊 ≈ 一次高斯卷积。
+     * 不用 RenderScript（ScriptIntrinsicBlur 已废弃，Java 21 编译有风险）也不用 RenderEffect（要 API 31，
+     * 而且 RemoteViews 里的位图用不上），也不引第三方库。
+     * 先按 factor = max(1, blurPx/8, 最长边/256) 降采样到小图：让等效 σ 落在小图 8px 附近（糊得开），
+     * 同时把小图最长边压到 256px 以内，遍历量恒定在几十万像素级，不会在刷新小组件时卡住主线程；
+     * 在小图上跑 3 轮「先横后纵」盒式模糊，最后把小图放大回 src 的尺寸，让上层的 BitmapShader 近似 1:1 采样。
+     * 半径推导：窗口 2r+1 的单次盒式模糊方差 = ((2r+1)^2-1)/12 = (r^2+r)/3，3 次叠加 = r^2+r；
+     * 小图里的目标 σ = blurPx/factor（对应大图上的 blurPx），解 r^2+r = σ^2 得 r = (sqrt(1+4σ^2)-1)/2。
+     * @param src loadWidgetBackgroundImage 解码出的位图
+     * @param blurPx 期望的高斯半径（px，卡面尺度）
+     * @return 模糊后放大回 src 尺寸的位图；blurPx<=0 或降采样后小图不足 2px 时原样返回 src
+     */
+    private static android.graphics.Bitmap blurBitmap(android.graphics.Bitmap src, int blurPx) {
+        float factor = Math.max(1F, Math.max(blurPx / 8F, Math.max(src.getWidth(), src.getHeight()) / 256F));
+        int w = Math.round(src.getWidth() / factor);
+        int h = Math.round(src.getHeight() / factor);
+        if (blurPx <= 0 || w < 2 || h < 2) return src;
+        float sigma = blurPx / factor;
+        int r = Math.max(1, (int) Math.round((Math.sqrt(1 + 4 * sigma * sigma) - 1) / 2));
+        android.graphics.Bitmap small = android.graphics.Bitmap.createScaledBitmap(src, w, h, true);
+        if (sBlurPixels == null || sBlurPixels.length < w * h) {
+            sBlurPixels = new int[w * h];
+            sBlurTemp = new int[w * h];
+        }
+        int[] pix = sBlurPixels;
+        int[] tmp = sBlurTemp;
+        small.getPixels(pix, 0, w, 0, 0, w, h);
+        for (int pass = 0; pass < 3; pass++) {
+            boxBlur(pix, tmp, w, h, r, true);
+            boxBlur(tmp, pix, w, h, r, false);
+        }
+        // 结果写进新建的位图，不能写回 small —— factor 为 1 时 createScaledBitmap 返回的就是 src 本身，那是缓存里的原图
+        android.graphics.Bitmap out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888);
+        out.setPixels(pix, 0, w, 0, 0, w, h);
+        // 放大回 src 的尺寸，让 shader 近似 1:1 采样，不依赖 setFilterBitmap 对 BitmapShader 是否生效
+        return android.graphics.Bitmap.createScaledBitmap(out, src.getWidth(), src.getHeight(), true);
+    }
+
+    /**
+     * 单方向的一次盒式模糊：滑动窗口累加，每像素 O(1)，边缘按 CLAMP 处理（重复端点像素）。
+     * 四个通道各自取算术平均；背景图解码出来通常不透明，alpha 一起平均没有副作用。
+     * @param src 输入像素（ARGB_8888  packed int）
+     * @param dst 输出像素
+     * @param w 位图宽
+     * @param h 位图高
+     * @param r 模糊半径
+     * @param horizontal true 为横向逐行，false 为纵向逐列
+     */
+    private static void boxBlur(int[] src, int[] dst, int w, int h, int r, boolean horizontal) {
+        int lines = horizontal ? h : w;
+        int len = horizontal ? w : h;
+        int stride = horizontal ? 1 : w;
+        int div = 2 * r + 1;
+        int half = div >> 1;
+        for (int line = 0; line < lines; line++) {
+            int base = line * (horizontal ? w : 1);
+            int sa = 0;
+            int sr = 0;
+            int sg = 0;
+            int sb = 0;
+            for (int j = -r; j <= r; j++) {
+                int p = src[base + Math.min(len - 1, Math.max(0, j)) * stride];
+                sa += p >>> 24;
+                sr += p >> 16 & 0xFF;
+                sg += p >> 8 & 0xFF;
+                sb += p & 0xFF;
+            }
+            for (int j = 0; j < len; j++) {
+                // 加半个窗口再整除：直接除是向零截断，6 轮下来整图会偏暗并让平滑渐变出色带
+                dst[base + j * stride] = (sa + half) / div << 24 | (sr + half) / div << 16 | (sg + half) / div << 8 | (sb + half) / div;
+                int add = src[base + Math.min(len - 1, j + r + 1) * stride];
+                int sub = src[base + Math.max(0, j - r) * stride];
+                sa += (add >>> 24) - (sub >>> 24);
+                sr += (add >> 16 & 0xFF) - (sub >> 16 & 0xFF);
+                sg += (add >> 8 & 0xFF) - (sub >> 8 & 0xFF);
+                sb += (add & 0xFF) - (sub & 0xFF);
+            }
+        }
     }
 
     public static synchronized android.graphics.Bitmap getThemedCheckedIcon(int color) {
