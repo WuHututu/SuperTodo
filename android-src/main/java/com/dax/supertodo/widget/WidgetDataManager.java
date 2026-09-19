@@ -52,6 +52,9 @@ public class WidgetDataManager {
     private static volatile long sWidgetBgImageTime = 0L;
     private static volatile int sWidgetBgImageWidth = 0;
     private static volatile int sWidgetBgImageHeight = 0;
+    private static volatile int sWidgetContentColor = 0;
+    private static volatile android.graphics.Bitmap sWidgetBgAvgSource = null;
+    private static volatile int sWidgetBgAvgColor = 0;
     private static final java.util.concurrent.ExecutorService sIoExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
 
     public static synchronized void saveWidgetData(Context context, String json) {
@@ -291,59 +294,140 @@ public class WidgetDataManager {
         }
     }
 
+    /**
+     * 生成 2x2 小组件的背景层位图（带透明圆角四角）。两个滑块语义：
+     * opacity = 背景层自身的 alpha —— 主题模式是纯色块的 alpha，图片模式是图片本身的 alpha，桌面壁纸从下面透出来；
+     * blur = 图片自身的高斯模糊半径（降采样 + 双线性放大近似，零依赖、任何 API 都能跑）——
+     *        主题模式没有可糊的对象，改它不产生视觉效果，这是预期行为。
+     * 图片模式不再叠任何主题色遮罩，也不再画一圈描边；圆角一律用硬边抗锯齿 DST_IN 裁切，
+     * 不能拿模糊滤镜当圆角蒙版，否则模糊会把 alpha 向圆角外扩散，四角溢出半透明填充。
+     * 副作用：顺手记录本次卡面应使用的文字色，供 getWidgetContentColor 读取。
+     * @param context 上下文
+     * @param widthDp 小部件宽度（dp）
+     * @param heightDp 小部件高度（dp）
+     * @return 背景位图
+     */
     public static android.graphics.Bitmap getWidgetBackgroundBitmap(Context context, int widthDp, int heightDp) {
         int width = Math.max(1, Math.min(dpToPx(context, Math.max(widthDp, 1)), 512));
         int height = Math.max(1, Math.min(dpToPx(context, Math.max(heightDp, 1)), 512));
+        float radius = dpToPx(context, 18);
         android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
         android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
         android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-        int bgColor = getWidgetBackgroundColor(context);
-        float radius = dpToPx(context, 18);
-        float stroke = Math.max(1, dpToPx(context, 1));
-        android.graphics.RectF rect = new android.graphics.RectF(stroke / 2, stroke / 2, width - stroke / 2, height - stroke / 2);
 
-        paint.setStyle(android.graphics.Paint.Style.FILL);
-        paint.setColor(bgColor);
-        int blurPx = dpToPx(context, getWidgetBackgroundBlur(context));
-        // 读取背景类型：只有显式选择 image 且图片文件可解码时才使用图片背景
         String bgType = "theme";
+        int opacity = 80;
         try {
             JSONObject widgetBackground = new JSONObject(getWidgetData(context)).optJSONObject("widget2x2Background");
-            if (widgetBackground != null) bgType = widgetBackground.optString("type", "theme");
+            if (widgetBackground != null) {
+                bgType = widgetBackground.optString("type", "theme");
+                opacity = widgetBackground.optInt("opacity", 80);
+            }
         } catch (Exception ignore) {}
+        // 只有显式选 image 且图片文件可解码时才走图片分支，否则回退主题色（保持原行为）
         android.graphics.Bitmap bgImage = "image".equals(bgType) ? loadWidgetBackgroundImage(context, width, height) : null;
-        if (bgImage != null) {
-            // 图片先 centerCrop 铺满画布，再叠一层主题色保证文字可读，最后用同一个圆角+羽化做 DST_IN 裁切，边缘效果与纯色分支一致
-            int layer = canvas.saveLayer(new android.graphics.RectF(0, 0, width, height), null);
-            float scale = Math.max(width / (float) bgImage.getWidth(), height / (float) bgImage.getHeight());
-            float drawW = bgImage.getWidth() * scale;
-            float drawH = bgImage.getHeight() * scale;
-            canvas.drawBitmap(bgImage, null, new android.graphics.RectF(
-                    (width - drawW) / 2F, (height - drawH) / 2F, (width + drawW) / 2F, (height + drawH) / 2F), paint);
-            canvas.drawRect(0, 0, width, height, paint);
-            android.graphics.Paint maskPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-            maskPaint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
-            if (blurPx > 0) {
-                maskPaint.setMaskFilter(new android.graphics.BlurMaskFilter(blurPx, android.graphics.BlurMaskFilter.Blur.NORMAL));
-            }
-            canvas.drawRoundRect(rect, radius, radius, maskPaint);
-            canvas.restoreToCount(layer);
-        } else {
-            if (blurPx > 0) {
-                paint.setMaskFilter(new android.graphics.BlurMaskFilter(blurPx, android.graphics.BlurMaskFilter.Blur.NORMAL));
-            }
-            canvas.drawRoundRect(rect, radius, radius, paint);
-            paint.setMaskFilter(null);
+
+        if (bgImage == null) {
+            sWidgetContentColor = contentColorFor(getWidgetThemeColor(context));
+            // getWidgetBackgroundColor 已经把 opacity 换算进 alpha，纯色分支直接画圆角矩形即可，不需要 saveLayer
+            paint.setColor(getWidgetBackgroundColor(context));
+            canvas.drawRoundRect(new android.graphics.RectF(0, 0, width, height), radius, radius, paint);
+            return bitmap;
         }
 
-        try {
-            paint.setStyle(android.graphics.Paint.Style.STROKE);
-            paint.setStrokeWidth(stroke);
-            paint.setColor(androidx.core.content.ContextCompat.getColor(context, R.color.widget_stroke));
-            canvas.drawRoundRect(rect, radius, radius, paint);
-        } catch (Exception ignore) {}
+        int blurPx = dpToPx(context, getWidgetBackgroundBlur(context));
+        android.graphics.Bitmap blurred = bgImage;
+        if (blurPx > 0) {
+            // 降采样比例 f = 1 + blurPx / 4，clamp 到 [1, 32]；放大时用双线性过滤，一次降采样+放大对背景模糊足够
+            float factor = Math.max(1F, Math.min(32F, 1 + blurPx / 4F));
+            blurred = android.graphics.Bitmap.createScaledBitmap(bgImage,
+                    Math.max(1, Math.round(bgImage.getWidth() / factor)),
+                    Math.max(1, Math.round(bgImage.getHeight() / factor)), true);
+            paint.setFilterBitmap(true);
+        }
+        sWidgetContentColor = contentColorFor(averageColorOf(blurred));
 
+        int layer = canvas.saveLayer(new android.graphics.RectF(0, 0, width, height), null);
+        paint.setAlpha(Math.max(0, Math.min(100, opacity)) * 255 / 100);
+        // 模糊会让位图边缘 alpha 衰减，centerCrop 时目标矩形每边向外扩 blurPx 做 overscan，保证圆角内侧不留透明边
+        float overscan = blurPx;
+        float targetW = width + overscan * 2;
+        float targetH = height + overscan * 2;
+        float scale = Math.max(targetW / blurred.getWidth(), targetH / blurred.getHeight());
+        float drawW = blurred.getWidth() * scale;
+        float drawH = blurred.getHeight() * scale;
+        canvas.drawBitmap(blurred, null, new android.graphics.RectF(
+                (targetW - drawW) / 2F - overscan, (targetH - drawH) / 2F - overscan,
+                (targetW + drawW) / 2F - overscan, (targetH + drawH) / 2F - overscan), paint);
+        // 裁切前必须把 alpha 复位成 255：在 globalAlpha < 255 时做 DST_IN，圆角外像素的 alpha 会等于填充 alpha，
+        // 结果 opacity=100% 时四角反而透不出壁纸
+        paint.setAlpha(255);
+        // 裁切用新建的 paint：只带 DST_IN 与抗锯齿，没有 MaskFilter、没有半透明
+        android.graphics.Paint clipPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        clipPaint.setXfermode(new android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN));
+        canvas.drawRoundRect(new android.graphics.RectF(0, 0, width, height), radius, radius, clipPaint);
+        canvas.restoreToCount(layer);
         return bitmap;
+    }
+
+    /**
+     * 返回 2x2 卡面上文字与勾选框应该用的颜色（亮背景深字、暗背景白字）。
+     * 取的是上一次 getWidgetBackgroundBitmap 走哪个分支算出的结果，必须在它之后调用；
+     * 万一调用顺序颠倒，就退回按主题色算的默认值。
+     * @param context 上下文
+     * @return 不透明的 ARGB 文字色
+     */
+    public static int getWidgetContentColor(Context context) {
+        int cached = sWidgetContentColor;
+        return cached != 0 ? cached : contentColorFor(getWidgetThemeColor(context));
+    }
+
+    /**
+     * 求一张图的平均 RGB，用来代表图片分支的有效背景色。
+     * 直接复用模糊时那张降采样小图（像素量已经很小），不额外解码原图或再缩放一次；
+     * 缓存只按位图实例判等——平均色与画布宽高无关，不能跟 loadWidgetBackgroundImage 的宽高缓存混在一起。
+     * @param sample 参与求均值的小图
+     * @return 不透明的平均 RGB
+     */
+    private static synchronized int averageColorOf(android.graphics.Bitmap sample) {
+        if (sWidgetBgAvgSource == sample && sWidgetBgAvgColor != 0) return sWidgetBgAvgColor;
+        int w = sample.getWidth();
+        int h = sample.getHeight();
+        int[] row = new int[w];
+        long sumR = 0;
+        long sumG = 0;
+        long sumB = 0;
+        for (int y = 0; y < h; y++) {
+            sample.getPixels(row, 0, w, 0, y, w, 1);
+            for (int x = 0; x < w; x++) {
+                sumR += android.graphics.Color.red(row[x]);
+                sumG += android.graphics.Color.green(row[x]);
+                sumB += android.graphics.Color.blue(row[x]);
+            }
+        }
+        long count = (long) w * h;
+        sWidgetBgAvgSource = sample;
+        sWidgetBgAvgColor = android.graphics.Color.rgb((int) (sumR / count), (int) (sumG / count), (int) (sumB / count));
+        return sWidgetBgAvgColor;
+    }
+
+    /**
+     * 按 WCAG 相对亮度决定卡面文字色：sRGB 线性化后加权求 L，L > 0.45 用深色字，否则用白字。
+     * @param color 有效背景色（不透明的 RGB / ARGB，只看 RGB 通道）
+     * @return 0xFF1A1A1A 或 0xFFFFFFFF
+     */
+    private static int contentColorFor(int color) {
+        double[] channels = new double[] {
+                android.graphics.Color.red(color) / 255.0,
+                android.graphics.Color.green(color) / 255.0,
+                android.graphics.Color.blue(color) / 255.0
+        };
+        for (int i = 0; i < 3; i++) {
+            double c = channels[i];
+            channels[i] = c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+        }
+        double luminance = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+        return luminance > 0.45 ? 0xFF1A1A1A : 0xFFFFFFFF;
     }
 
     /**

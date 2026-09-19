@@ -22,6 +22,20 @@ assert(manager.includes('optInt("opacity", 80)'), '2x2 背景必须读取透明�
 assert(manager.includes('optInt("blur", 12)'), '2x2 背景必须读取模糊度配置');
 assert(widget2x2.includes('setImageViewBitmap(R.id.widget_2x2_bg'), '2x2 必须使用动态背景 bitmap');
 assert(widget2x2Layout.includes('android:id="@+id/widget_2x2_bg"'), '2x2 布局必须保留动态背景层');
+
+// 2x2 背景渲染：圆角硬边裁切、图片不叠遮罩不描白边、文字色按卡面亮度取
+const bgMethodStart = manager.indexOf('public static android.graphics.Bitmap getWidgetBackgroundBitmap');
+const bgMethodEnd = manager.indexOf('private static synchronized android.graphics.Bitmap loadWidgetBackgroundImage');
+assert.ok(bgMethodStart >= 0 && bgMethodEnd > bgMethodStart, '找不到 getWidgetBackgroundBitmap 方法体');
+const backgroundMethod = manager.slice(bgMethodStart, bgMethodEnd);
+assert(!backgroundMethod.includes('Paint.Style.STROKE'), '背景不能描一圈 widget_stroke 白边');
+assert(!backgroundMethod.includes('canvas.drawRect'), '图片模式不能用主题色整块盖住图片');
+assert(backgroundMethod.includes('PorterDuff.Mode.DST_IN'), '圆角必须用 DST_IN 硬边裁切');
+assert(!manager.includes('BlurMaskFilter'), 'BlurMaskFilter 会把 alpha 扩散到圆角外导致四角溢出');
+assert(widget2x2.includes('setTextColor(titles[i], contentColor)'), '2x2 文字色必须来自卡面亮度而不是主题色');
+assert(widget2x2.includes('setTextColor(R.id.widget_2x2_empty_view, contentColor)'), '2x2 空态文案必须跟随卡面文字色');
+assert(widget2x2.includes('setInt(checks[i], "setColorFilter", contentColor)'), '2x2 勾选框描边必须跟随卡面文字色');
+assert(!widget2x2.includes('themeColor'), '2x2 不能再用主题色当文字色');
 assert(!quadrantLayout.includes('android:background="#FFFFFF"'), '四象限方向标签背景不能硬编码为日间白色');
 
 for (const source of [widget4x2, widget4x4, service]) {

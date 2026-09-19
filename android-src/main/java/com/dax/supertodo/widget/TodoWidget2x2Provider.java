@@ -23,8 +23,8 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_2x2);
         int width = WidgetDataManager.getWidgetWidth(context, appWidgetManager, appWidgetId, 120);
         int height = WidgetDataManager.getWidgetHeight(context, appWidgetManager, appWidgetId, 120);
-        int themeColor = WidgetDataManager.getWidgetThemeColor(context);
         views.setImageViewBitmap(R.id.widget_2x2_bg, WidgetDataManager.getWidgetBackgroundBitmap(context, width, height));
+        int contentColor = WidgetDataManager.getWidgetContentColor(context);
 
         int[] rows = {
                 R.id.widget_2x2_row1, R.id.widget_2x2_row2, R.id.widget_2x2_row3,
@@ -42,9 +42,12 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
                 R.id.widget_2x2_title7
         };
         for (int i = 0; i < titles.length; i++) {
-            views.setTextColor(titles[i], themeColor);
+            views.setTextColor(titles[i], contentColor);
+            // 反射 ImageView.setColorFilter(int)（SRC_IN），把未勾选方框那圈描边染成卡面色，不用改 drawable 也不加位图
+            views.setInt(checks[i], "setColorFilter", contentColor);
             views.setViewVisibility(rows[i], View.GONE);
         }
+        views.setTextColor(R.id.widget_2x2_empty_view, contentColor);
 
         List<TodoItem> items = WidgetDataManager.load2x2Items(context);
         int capacity = getVisibleRowCount(context, height);
