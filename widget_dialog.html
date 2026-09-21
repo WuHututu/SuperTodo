@@ -187,7 +187,8 @@
       overflow-x: hidden;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      /* gap 不参与过渡，塌陷时这 8px 收不掉；行距改由 .task-row 的 margin-bottom 承担 */
+      gap: 0;
       padding-right: 0;
       max-height: none;
       margin-bottom: 12px;
@@ -211,7 +212,14 @@
       cursor: pointer;
       overflow: hidden;
       user-select: none;
-      transition: transform 0.18s cubic-bezier(0.34, 1.4, 0.64, 1), background 0.2s, opacity 0.22s;
+      margin-bottom: 8px;
+      transition: transform 0.18s cubic-bezier(0.34, 1.4, 0.64, 1), background 0.2s, opacity 0.22s,
+        height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), padding-top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+        padding-bottom 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), margin-bottom 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+        border-width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .task-row:last-child {
+      margin-bottom: 0;
     }
     .task-row:active {
       transform: scale(0.98);
@@ -220,14 +228,31 @@
     .task-row.done {
       opacity: 0.6;
     }
+    /* 离场塌陷：box-sizing:border-box 下只归零 height 会被 padding/border/min-height 顶回来，四项得一起收 */
+    .task-row.leaving {
+      height: 0 !important;
+      min-height: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      margin-bottom: 0 !important;
+      border-width: 0;
+      opacity: 0;
+    }
+    @keyframes rowEnter {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: none; }
+    }
+    .task-row.entering {
+      animation: rowEnter 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
     /* 复选框弹性动画 */
     .task-check {
       width: 18px;
       height: 18px;
       border-radius: 6px;
-      border: 1.8px solid var(--text-sec);
+      border: 2.6px solid var(--text-sec);
       flex-shrink: 0;
-      margin-top: 1.5px;
+      margin-top: 0;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -245,30 +270,80 @@
       100% { transform: scale(1); }
     }
 
-    .task-row.done .task-check::after {
+    /* ::after 不被 *{box-sizing:border-box} 命中，字形是 content-box：flex 居中的是外盒，
+       旋转 45° 后墨迹中心落在外盒中心下方 w/2√2 = 1.41px（只跟宽 4 有关），所以用它补回来。
+       描边 1.8 → 2.6 加粗，长边 8 → 6.4 减短，墨迹包围盒尺寸不变、只是变粗。
+       .unchecking 也得挂上：content 一撤 ::after 就整个没了，√ 缩回动画没处跑。 */
+    .task-row.done .task-check::after, .task-row.unchecking .task-check::after {
       content: '';
       width: 4px;
-      height: 8px;
+      height: 6.4px;
       border: solid #FFF;
-      border-width: 0 1.8px 1.8px 0;
-      transform: rotate(45deg);
-      margin-bottom: 2px;
+      border-width: 0 2.6px 2.6px 0;
+      transform: translateY(-1.41px) rotate(45deg);
     }
     .task-title {
       flex: 1;
       min-width: 0;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 800;
       line-height: 1.3;
       color: var(--text-main);
+      transition: color 0.2s;
+    }
+    /* .task-title 是 flex:1，盒宽一路铺到拖拽手柄，所以划线的载体是包住文字的内层 span */
+    .t-text {
+      position: relative;
+      display: inline-block;
+      max-width: 100%;
+      vertical-align: top;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      transition: color 0.2s, text-decoration 0.2s;
+    }
+    /* text-decoration 既不可动画也只会跟随文字色，画不出主题色的「划线」动作 */
+    .t-text::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 2px;
+      margin-top: -1px;
+      border-radius: 1px;
+      background: var(--primary);
+      transform: scaleX(0);
+      transform-origin: left center;
+      transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .task-row.completing .t-text::after, .task-row.done .t-text::after {
+      transform: scaleX(1);
     }
     .task-row.done .task-title {
-      text-decoration: line-through;
       color: var(--text-sec);
+    }
+
+    /* 取消勾选（.unchecking）= 把上面那套过渡倒着跑：0→250 收线、220→290 尾部塌陷、290→520 回位展开。
+       划线反向不复用正向的 cubic-bezier(.2,.8,.2,1)：它前 20% 时间吃掉 80% 位移，倒着跑一眨眼就没，
+       换成对称这条；勾选框填充 / 标题色 / 行不透明度的正向时长本来就对称，原样倒放，不新增覆盖。 */
+    .task-row.unchecking .t-text::after {
+      transition: transform 0.25s cubic-bezier(0.65, 0, 0.35, 1);
+    }
+    /* :not(.done) 让反向态一旦重新勾选就让位给上面那条字形规则 */
+    .task-row.unchecking:not(.done) .task-check::after {
+      transform: translateY(-1.41px) rotate(45deg) scale(0);
+      opacity: 0;
+      /* √ 同样不能用 checkPop 那条 1.6 回弹曲线：它会越过 0 让 √ 反手 */
+      transition: transform 0.15s cubic-bezier(0.65, 0, 0.35, 1), opacity 0.12s linear;
+    }
+    /* 正向行盒 .28s 在 520ms 里塞不下：塌陷压到 70ms（这么短里 out 曲线基本看不出在收，故 linear）、展开 230ms */
+    .task-row.unchecking.leaving {
+      transition-duration: 0.07s;
+      transition-timing-function: linear;
+    }
+    .task-row.unchecking.entering {
+      transition-duration: 0.23s;
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .drag-handle {
@@ -529,6 +604,8 @@
     let rootData = { items: [], trash: [], widget2x2: [] };
     let sortableInstance = null;
     let isExiting = false;
+    // 下次 renderList() 要播「长回来」进入动画的 id（完成沉底 / 新建）
+    let enterIds = new Set();
 
     function applyWidgetTheme(hex) {
       if (!/^#[0-9a-f]{6}$/i.test(hex || '')) return;
@@ -669,34 +746,92 @@
         return;
       }
 
-      listEl.innerHTML = visibleTasks.map(t => {
+      // 只影响显示顺序：已完成沉到底部（优先级低于未完成），sort 稳定所以块内仍是拖出来的顺序
+      const ordered = visibleTasks.slice().sort((a, b) => (itemMap.get(a.id).done ? 1 : 0) - (itemMap.get(b.id).done ? 1 : 0));
+
+      listEl.innerHTML = ordered.map(t => {
         const item = itemMap.get(t.id);
         const done = !!item.done;
         return '<div class="task-row ' + (done ? 'done' : '') + '" data-id="' + escapeHtml(t.id) + '" onclick="toggleTaskDone(this.dataset.id)">' +
           '<div class="task-check"></div>' +
-          '<div class="task-title">' + escapeHtml(item.title) + '</div>' +
+          '<div class="task-title"><span class="t-text">' + escapeHtml(item.title) + '</span></div>' +
           '<div class="drag-handle" title="按住拖拽" onclick="event.stopPropagation()"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"></circle><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="15" cy="12" r="2"></circle><circle cx="9" cy="18" r="2"></circle><circle cx="15" cy="18" r="2"></circle></svg></div>' +
         '</div>';
       }).join('');
       initSortable(listEl);
+
+      enterIds.forEach(id => {
+        const row = listEl.querySelector('.task-row[data-id="' + id + '"]');
+        const height = row.offsetHeight;
+        // 关过渡把塌陷态钉成起点，否则这次重建会直接从满高开始
+        row.style.transition = 'none';
+        row.classList.add('leaving');
+        row.offsetWidth;
+        row.style.transition = '';
+        row.classList.remove('leaving');
+        row.classList.add('entering');
+        row.style.height = height + 'px';
+      });
+      enterIds = new Set();
     }
 
+    // 完成动效时间线：划线 280 → 塌陷 280 → 沉底重入 220，合计 780ms
+    // 取消勾选反向：收线 0→250 →（重叠 30ms）尾部塌陷 220→290 → 未完成区末尾展开 290→520
     function toggleTaskDone(id) {
       const task = (rootData.widget2x2 || []).find(t => t.id === id);
       const mainItem = (rootData.items || []).find(it => it.id === id);
-      if (task && mainItem) {
-        mainItem.done = !mainItem.done;
-        if (mainItem.done) {
-          mainItem.doneScenes = Array.isArray(mainItem.scenes) ? mainItem.scenes.slice() : [];
-          mainItem.doneTypes = Array.isArray(mainItem.types) ? mainItem.types.slice() : [];
-        } else {
-          mainItem.doneScenes = [];
-          mainItem.doneTypes = [];
-        }
-        task.done = mainItem.done;
-        saveData();
-        renderList();
+      if (!task || !mainItem) return;
+      mainItem.done = !mainItem.done;
+      if (mainItem.done) {
+        mainItem.doneScenes = Array.isArray(mainItem.scenes) ? mainItem.scenes.slice() : [];
+        mainItem.doneTypes = Array.isArray(mainItem.types) ? mainItem.types.slice() : [];
+      } else {
+        mainItem.doneScenes = [];
+        mainItem.doneTypes = [];
       }
+      task.done = mainItem.done;
+      saveData();
+
+      const selector = '.task-row[data-id="' + id + '"]';
+      if (!mainItem.done) {
+        const row = document.querySelector(selector);
+        row.classList.add('unchecking');
+        // 只摘 .done / .completing：划线、填充、标题色、行不透明度全靠 CSS 倒着跑
+        row.classList.remove('done', 'completing');
+        setTimeout(() => {
+          // height 得先是具体数值才能往 0 过渡（auto 不可插值），所以先钉住再塌陷
+          row.style.height = row.offsetHeight + 'px';
+          row.offsetWidth;
+          row.classList.add('leaving');
+        }, 220);
+        setTimeout(() => {
+          enterIds.add(id);
+          renderList();
+          // 重建出来的行也得挂着 .unchecking，否则它用正向的 .28s 行盒时长，520ms 装不下
+          document.querySelector(selector).classList.add('unchecking');
+        }, 290);
+        setTimeout(() => {
+          const revived = document.querySelector(selector);
+          revived.classList.remove('unchecking');
+          revived.style.height = '';
+        }, 520);
+        return;
+      }
+      const row = document.querySelector(selector);
+      row.classList.add('done', 'completing');
+      setTimeout(() => {
+        // height 得先是具体数值才能往 0 过渡（auto 不可插值），所以先钉住再塌陷
+        row.style.height = row.offsetHeight + 'px';
+        row.offsetWidth;
+        row.classList.add('leaving');
+      }, 280);
+      setTimeout(() => {
+        enterIds.add(id);
+        renderList();
+      }, 560);
+      setTimeout(() => {
+        document.querySelector(selector).style.height = '';
+      }, 780);
     }
 
     function showInputRow() {
@@ -743,6 +878,7 @@
 
       if (!rootData.widget2x2) rootData.widget2x2 = [];
       rootData.widget2x2.push({ id: newId, title: text, done: false });
+      enterIds.add(newId);
 
       saveData();
       hideInputRow();

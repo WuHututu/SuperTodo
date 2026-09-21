@@ -46,6 +46,12 @@ public class WidgetDataManager {
     private static volatile String sCachedJson = null;
     private static volatile int sCheckedIconColor = 0;
     private static volatile android.graphics.Bitmap sCheckedIcon = null;
+    // getThemedCheckedBox 的缓存键是两个颜色，方块色或对勾色任一变了都要重画
+    private static volatile int sCheckedBoxColor = 0;
+    private static volatile int sCheckedBoxCheckColor = 0;
+    private static volatile android.graphics.Bitmap sCheckedBox = null;
+    private static volatile int sCheckBoxOutlineColor = 0;
+    private static volatile android.graphics.Bitmap sCheckBoxOutline = null;
     private static volatile int sWidgetBgHash = 0;
     private static volatile int sWidgetBgLength = 0;
     private static volatile android.graphics.Bitmap sWidgetBgImage = null;
@@ -558,6 +564,62 @@ public class WidgetDataManager {
         canvas.drawPath(check, paint);
         sCheckedIconColor = color;
         sCheckedIcon = bitmap;
+        return bitmap;
+    }
+
+    /**
+     * 完成动画满线帧用的「已勾选」方块：实心圆角方块里画一个对勾。
+     * 两个颜色分开传：跟随主题时卡面本身就是主题色，方块若也用主题色就会整块隐形，
+     * 所以方块用卡面文字色、对勾用主题色（对照 preview_out 的 anim_b_stage1_fill_theme 预览取图的方案）。
+     * 淡出靠传进来的 ARGB 自带的 alpha，不再额外开 alpha 参数。
+     * @param boxColor 方块填充色（ARGB）
+     * @param checkColor 对勾颜色（ARGB）
+     * @return 48x48 的勾选方块位图
+     */
+    public static synchronized android.graphics.Bitmap getThemedCheckedBox(int boxColor, int checkColor) {
+        if (sCheckedBox != null && sCheckedBoxColor == boxColor && sCheckedBoxCheckColor == checkColor) return sCheckedBox;
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(48, 48, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paint.setStyle(android.graphics.Paint.Style.FILL);
+        paint.setColor(boxColor);
+        canvas.drawRoundRect(new android.graphics.RectF(3, 3, 45, 45), 10, 10, paint);
+        paint.setStyle(android.graphics.Paint.Style.STROKE);
+        paint.setColor(checkColor);
+        paint.setStrokeWidth(5);
+        paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+        paint.setStrokeJoin(android.graphics.Paint.Join.ROUND);
+        // 预览里量过的居中对勾：墨迹范围 10.5~37.5 x 14.5~33.5，正好以 (24, 24) 为中心。
+        // 不要照抄上面圆形图标那条路径——它整体偏右下，长臂也不是严格的 45 度。
+        android.graphics.Path check = new android.graphics.Path();
+        check.moveTo(13, 23);
+        check.lineTo(21, 31);
+        check.lineTo(35, 17);
+        canvas.drawPath(check, paint);
+        sCheckedBoxColor = boxColor;
+        sCheckedBoxCheckColor = checkColor;
+        sCheckedBox = bitmap;
+        return bitmap;
+    }
+
+    /**
+     * 未勾选方框的描边位图：48x48，几何按 widget_2x2_checkbox_unchecked.xml 的比例换算到本位图尺度
+     * （ImageView 22dp 减 2dp 内边距后显示 48px，1dp ≈ 2.67px，于是 2dp 描边 ≈ 5px、4dp 圆角 ≈ 10px）。
+     * 方框路径与 getThemedCheckedBox 的填充方块同一条 RectF 和圆角，两态切换时边线才不会跳位。
+     * @param color 描边颜色（ARGB，一般传卡面文字色）
+     * @return 48x48 的未勾选方框位图
+     */
+    public static synchronized android.graphics.Bitmap getThemedCheckBoxOutline(int color) {
+        if (sCheckBoxOutline != null && sCheckBoxOutlineColor == color) return sCheckBoxOutline;
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(48, 48, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paint.setStyle(android.graphics.Paint.Style.STROKE);
+        paint.setStrokeWidth(5);
+        paint.setColor(color);
+        canvas.drawRoundRect(new android.graphics.RectF(3, 3, 45, 45), 10, 10, paint);
+        sCheckBoxOutlineColor = color;
+        sCheckBoxOutline = bitmap;
         return bitmap;
     }
 

@@ -35,6 +35,44 @@ assert.match(source, /function saveBgSliders\(\)[\s\S]*?saveData\(\);/);
 assert.match(source, /function showInputRow\(\)\s*\{\s*document\.getElementById\('bgStylePanel'\)\.style\.display = 'none';/, 'input row and style panel must stay mutually exclusive');
 assert.match(source, /function toggleBgPanel\(\)[\s\S]*?hideInputRow\(\)/);
 
+// 行生命周期动效：塌陷离场 + 主题色划线 + 沉底重入（全程 780ms）
+assert.match(source, /\.task-list\s*\{[^}]*gap:\s*0;/, 'flex gap 收不掉，行距必须交给 margin-bottom');
+assert.match(source, /\.task-row\s*\{[^}]*margin-bottom:\s*8px;/);
+assert.match(source, /\.task-row:last-child\s*\{\s*margin-bottom:\s*0;/);
+assert.match(source, /\.task-row\.leaving\s*\{[^}]*height:\s*0\s*!important;/, '离场行必须能塌到 0 高');
+assert.match(source, /@keyframes rowEnter\s*\{[^}]*translateY\(-6px\)/);
+assert.match(source, /\.task-row\.entering\s*\{[^}]*animation:\s*rowEnter/);
+assert.match(source, /\.t-text::after\s*\{[\s\S]*?background:\s*var\(--primary\);/, '划线必须是主题色');
+assert.match(source, /\.t-text::after\s*\{[\s\S]*?transform:\s*scaleX\(0\);[\s\S]*?transform-origin:\s*left center;/);
+assert.match(source, /\.task-row\.completing \.t-text::after, \.task-row\.done \.t-text::after\s*\{\s*transform:\s*scaleX\(1\);/);
+assert.doesNotMatch(source, /text-decoration:\s*line-through/, 'text-decoration 不可动画，划线改由 ::after 承担');
+assert.match(source, /\.t-text\s*\{[^}]*text-overflow:\s*ellipsis;/, '省略号得跟着内层 span，划线才不会划到手柄上');
+assert.match(source, /\.task-check\s*\{[^}]*border:\s*2\.6px solid/, '勾选框加粗');
+assert.match(source, /border-width:\s*0 2\.6px 2\.6px 0;/);
+assert.match(source, /transform:\s*translateY\(-1\.41px\) rotate\(45deg\);/, '√ 用 translateY 补回 content-box 下沉的 1.41px');
+assert.match(source, /\.task-title\s*\{[^}]*font-weight:\s*800;/, '待办文字加粗');
+assert.match(source, /const ordered = visibleTasks\.slice\(\)\.sort\(\(a, b\) => \(itemMap\.get\(a\.id\)\.done \? 1 : 0\) - \(itemMap\.get\(b\.id\)\.done \? 1 : 0\)\);/, '已完成只显示在未完成之后');
+assert.match(source, /let enterIds = new Set\(\);/);
+assert.match(source, /row\.classList\.add\('done', 'completing'\);/);
+assert.match(source, /enterIds\.add\(id\);\s*renderList\(\);/);
+assert.match(source, /enterIds\.add\(newId\);/);
+
+// 取消勾选反向时间线：收线 0→250 →（重叠 30ms）尾部塌陷 220→290 → 未完成区末尾展开 290→520
+assert.match(source, /\.task-row\.done \.task-check::after, \.task-row\.unchecking \.task-check::after\s*\{\s*content: '';/, '反向态得留着 ::after 的 content，否则 √ 没有退场动画、直接消失');
+assert.doesNotMatch(source, /\.task-row\.unchecking:not\(\.done\) \.task-check::after\s*\{[^}]*scale\(0\)[^}]*transition:[^;]*1\.6/, '√ 退场不能用 checkPop 那条 1.6 回弹曲线，会越过 0 反手');
+assert.match(source, /\.task-row\.unchecking:not\(\.done\) \.task-check::after\s*\{[^}]*transform:\s*translateY\(-1\.41px\) rotate\(45deg\) scale\(0\);[^}]*opacity:\s*0;/, '√ 反向缩回并淡出，且对齐数值一个不动');
+assert.match(source, /\.task-row\.unchecking \.t-text::after\s*\{\s*transition:\s*transform 0\.25s cubic-bezier\(0\.65, 0, 0\.35, 1\);/, '收线用对称曲线：正向那条前 20% 吃掉 80% 位移，倒着跑一眨眼就没');
+assert.match(source, /\.task-row\.unchecking\.leaving\s*\{\s*transition-duration:\s*0\.07s;\s*transition-timing-function:\s*linear;/, 'B 段塌陷 70ms');
+assert.match(source, /\.task-row\.unchecking\.entering\s*\{\s*transition-duration:\s*0\.23s;/, 'C 段展开 230ms');
+assert.doesNotMatch(source, /if \(!mainItem\.done\) \{\s*renderList\(\);/, '取消勾选不再走硬重建');
+assert.match(source, /row\.classList\.add\('unchecking'\);\s*\/\/ [^\n]*\n\s*row\.classList\.remove\('done', 'completing'\);/, 'A 段起跑：挂反向态 + 摘完成态');
+assert.match(source, /row\.classList\.add\('leaving'\);\s*\}, 220\);/, 'B 段 220ms 起跑（比 A 段终点早 30ms）');
+assert.match(source, /document\.querySelector\(selector\)\.classList\.add\('unchecking'\);\s*\}, 290\);/, 'C 段 290ms 重建成从塌陷态展开');
+assert.match(source, /revived\.classList\.remove\('unchecking'\);\s*revived\.style\.height = '';\s*\}, 520\);/, '520ms 收尾：清反向态与行内 height');
+const reverseCss = normalizedSource.slice(normalizedSource.indexOf('/* 取消勾选（.unchecking）'), normalizedSource.indexOf('.drag-handle {'));
+assert.ok(reverseCss.includes('.task-row.unchecking.entering'), '找不到反向样式块');
+assert.doesNotMatch(reverseCss, /#FFF|var\(--primary\)|var\(--text-sec\)|background:/, '反向只改时长与缓动，配色一个字节都不许动');
+
 // 背景设置规范化：透明度 10~100、模糊度 0~30、类型白名单
 const normalizeStart = normalizedSource.indexOf('    function normalizeWidget2x2Background(v) {');
 const normalizeEnd = normalizedSource.indexOf('\n\n    function syncWidget2x2FromItems', normalizeStart);

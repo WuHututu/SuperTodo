@@ -42,7 +42,8 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="13sp" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
@@ -68,7 +69,8 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="13sp" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
@@ -94,7 +96,8 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="13sp" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
@@ -120,7 +123,8 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="13sp" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
@@ -146,7 +150,8 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="13sp" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
@@ -172,7 +177,8 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="13sp" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
@@ -198,7 +204,8 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textColor="@color/widget_text_primary"
-                android:textSize="13sp" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <TextView
@@ -209,6 +216,7 @@
             android:text="暂无未完成事项"
             android:textColor="@color/widget_text_secondary"
             android:textSize="12sp"
+            android:textStyle="bold"
             android:visibility="gone" />
     </LinearLayout>
 </FrameLayout>
