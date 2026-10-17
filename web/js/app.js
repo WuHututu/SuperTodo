@@ -1,6 +1,7 @@
 'use strict';
 /* ========== 存储 ========== */
-const KEY='listapp.data.v2';
+const DEMO_MODE=new URLSearchParams(window.location.search).get('demo')==='1';
+const KEY=DEMO_MODE?'listapp.demo.v2':'listapp.data.v2';
 const DEFAULTS={types:['购物','待办','计划','旅游','愿望'],scenes:['家里','学校','出差','网上','线下'],times:['今年','明年','以后再说']};
 
 /* ========== 状态 ========== */
@@ -13,6 +14,8 @@ let state={
   search:'',
   theme:'#0b57d0',
   colorMode:'system',
+  interfaceStyle:document.documentElement.dataset.interfaceStyle||'md3',
+  uiStyleNoticeSeen:false,
   spacing:{preset:'standard',gap:10,pad:13,font:15},
   devMode:false,
   autoCheckUpdate:true,
@@ -29,7 +32,7 @@ let state={
 };
 
 /* 预设主色 */
-const PALETTE=['#0b57d0','#0f6b3c','#b3261e','#7c2d92','#007372','#e8710a','#d01884','#37474f','#1565c0','#2e7d32'];
+const PALETTE=['#0b57d0','#0f6b3c','#b3261e','#7c2d92','#007372','#e8710a','#d01884','#37474f'];
 
 /* ========== 工具 ========== */
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
@@ -150,6 +153,8 @@ function load(){
     if(d.groupBy)state.groupBy=d.groupBy;
     if(Array.isArray(d.trash))state.trash=d.trash; if(d.theme)state.theme=d.theme;
     if(['system','light','dark'].includes(d.colorMode))state.colorMode=d.colorMode;
+    state.interfaceStyle=['classic','md3'].includes(d.interfaceStyle)?d.interfaceStyle:(DEMO_MODE?'md3':'classic');
+    state.uiStyleNoticeSeen=d.uiStyleNoticeSeen===true;
     if(d.spacing&&typeof d.spacing==='object')state.spacing=Object.assign({preset:'standard',gap:10,pad:13,font:15},d.spacing);
     else if(d.listDensity==='compact')state.spacing={preset:'compact',gap:6,pad:8,font:13.5};
     else state.spacing={preset:'standard',gap:10,pad:13,font:15};
@@ -224,6 +229,10 @@ function syncFromNativeWidget(){
           if(!natIt||!natIt.id)return;
           const localIt=state.items.find(x=>x.id===natIt.id);
           if(localIt){
+            if(natIt.repeatNextId && localIt.repeatNextId!==natIt.repeatNextId){
+              localIt.repeatNextId=natIt.repeatNextId;
+              changed=true;
+            }
             if(localIt.done!==!!natIt.done){
               localIt.done=!!natIt.done;
               if(localIt.done){
@@ -239,7 +248,7 @@ function syncFromNativeWidget(){
               localIt.title=natIt.title;
               changed=true;
             }
-            ['types','scenes','doneScenes','doneTypes','type','scene','time','note','cost','due','star','created'].forEach(key=>{
+            ['types','scenes','doneScenes','doneTypes','type','scene','time','note','cost','due','star','created','repeatNextId'].forEach(key=>{
               if(natIt[key]!==undefined&&JSON.stringify(localIt[key])!==JSON.stringify(natIt[key])){
                 localIt[key]=Array.isArray(natIt[key])?natIt[key].slice():natIt[key];
                 changed=true;
@@ -349,11 +358,6 @@ checkPendingWidgetAction();
 
 try {
   const urlParams = new URLSearchParams(window.location.search);
-    if(urlParams.get('seed')==='1'||urlParams.get('demo')==='1'||urlParams.get('test')==='1'){
-      loadTestDemoData();
-    } else if(!state.items || !state.items.length){
-      loadTestDemoData();
-    }
   if(urlParams.get('seed_quadrant')==='1'){
     state.quadrantWidget = {
       q1: [{ id: 'demo1', title: '完成紧急汇报材料', done: false }, { id: 'demo2', title: '提交项目最终审核', done: true }],
@@ -511,19 +515,42 @@ function isDarkMode(){
 function applyTheme(hex){
   var h=hexToHsl(hex);
   var dark=isDarkMode();
-  var soft=dark?hslToCss(h[0],Math.min(55,h[1]),26):hslToCss(h[0],Math.min(92,h[1]+5),Math.max(87,Math.min(94,92+(h[2]-55)*0.4)));
-  var faint=dark?hslToCss(h[0],Math.min(35,h[1]),18):hslToCss(h[0],Math.min(42,h[1]),Math.max(95,Math.min(97,95)));
-  var deep=hslToCss(h[0],Math.min(96,h[1]),Math.max(22,Math.round(h[2]*0.86)));
-  var ink=dark?hslToCss(h[0],Math.min(92,h[1]+5),72):hex;
-  document.documentElement.style.setProperty('--primary',hex);
+  var saturation=Math.min(68,h[1]);
+  var soft=hslToCss(h[0],Math.min(42,h[1]),dark?28:90);
+  var faint=hslToCss(h[0],Math.min(22,h[1]),dark?18:95);
+  var deep=hslToCss(h[0],saturation,dark?72:30);
+  var ink=hslToCss(h[0],saturation,dark?80:28);
+  if(state.interfaceStyle==='classic'){
+    soft=dark?hslToCss(h[0],Math.min(55,h[1]),26):hslToCss(h[0],Math.min(92,h[1]+5),Math.max(87,Math.min(94,92+(h[2]-55)*0.4)));
+    faint=dark?hslToCss(h[0],Math.min(35,h[1]),18):hslToCss(h[0],Math.min(42,h[1]),95);
+    deep=hslToCss(h[0],Math.min(96,h[1]),Math.max(22,Math.round(h[2]*0.86)));
+    ink=dark?hslToCss(h[0],Math.min(92,h[1]+5),72):hex;
+  }
+  document.documentElement.style.setProperty('--theme-hue',h[0]);
+  document.documentElement.style.setProperty('--primary',state.interfaceStyle==='classic'?hex:ink);
   document.documentElement.style.setProperty('--primary-ink',ink);
   document.documentElement.style.setProperty('--primary-soft',soft);
   document.documentElement.style.setProperty('--primary-faint',faint);
   document.documentElement.style.setProperty('--primary-deep',deep);
-  document.documentElement.style.setProperty('--on-primary','#fff');
-  var m=document.querySelector('meta[name=theme-color]'); if(m)m.setAttribute('content',dark?'#111318':hex);
+  document.documentElement.style.setProperty('--on-primary',state.interfaceStyle==='md3'&&dark?hslToCss(h[0],saturation,20):'#fff');
+  var m=document.querySelector('meta[name=theme-color]'); if(m)m.setAttribute('content',getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
 }
 
+function renderInterfaceStyleSeg(){
+  $$('#interfaceStyleSeg .seg').forEach(btn=>{
+    const selected=btn.dataset.style===state.interfaceStyle;
+    btn.classList.toggle('on',selected);
+    btn.setAttribute('aria-pressed',String(selected));
+  });
+}
+function applyInterfaceStyle(){
+  const sheet=$('#interfaceStyleSheet');
+  document.documentElement.dataset.interfaceStyle=state.interfaceStyle;
+  if(state.interfaceStyle==='md3')sheet.setAttribute('href',sheet.dataset.md3Href);
+  else sheet.removeAttribute('href');
+  applyColorMode();
+  renderInterfaceStyleSeg();
+}
 function renderColorModeSeg(){
   const box=$('#colorModeSeg');
   if(!box) return;
@@ -534,6 +561,7 @@ function renderColorModeSeg(){
 
 function applyColorMode(){
   const dark=isDarkMode(),root=document.documentElement,btn=$('#drawerTheme');
+  root.classList.add('theme-changing');
   root.dataset.colorMode=dark?'dark':'light';
   applyTheme(state.theme);
   if(btn){
@@ -542,17 +570,14 @@ function applyColorMode(){
     btn.title='当前：'+tip+'，点击切换';
   }
   renderColorModeSeg();
+  // Apply foreground and background together, without their individual CSS transitions.
+  void root.offsetHeight;
+  requestAnimationFrame(()=>root.classList.remove('theme-changing'));
 }
 
 function toggleColorMode(){
-  // 循环顺序：跟随系统 -> 日间浅色 -> 夜间深色 -> 跟随系统
-  if(state.colorMode==='system'){
-    state.colorMode = isDarkMode() ? 'light' : 'dark';
-  }else if(state.colorMode==='light'){
-    state.colorMode = 'dark';
-  }else{
-    state.colorMode = 'system';
-  }
+  // 快捷按钮直接切换当前外观；“跟随系统”在设置中选择。
+  state.colorMode = isDarkMode() ? 'light' : 'dark';
   save();
   applyColorMode();
 }
@@ -648,20 +673,24 @@ function syncBack(){ codeBack=true; history.back() }
 function backHome(){ state.view={name:'home'}; state.sortKey='默认'; render() }
 function closeTopLayer(){
   backSuppress=true;
-  if(!$('#dlgModal').hidden){ dlgClose(); backSuppress=false; return true; }
-  if(!$('#itemPickerModal').hidden){ closeItemPicker(); backSuppress=false; return true; }
-  if(!$('#quadrantModal').hidden){ closeQuadrantModal(); backSuppress=false; return true; }
-  if(!$('#updateModal').hidden){ closeUpdateModal(); backSuppress=false; return true; }
-  if(!$('#clModal').hidden){ closeChangelog(); backSuppress=false; return true; }
-  if(!$('#modal').hidden){ hideModal(); backSuppress=false; return true; }
-  if(!$('#ctxModal').hidden){ closeCtx(); backSuppress=false; return true; }
-  if(!$('#aiModal').hidden){ closeAi(); backSuppress=false; return true; }
-  if(!$('#tidyModal').hidden){ closeTidy(); backSuppress=false; return true; }
-  if(!$('#infoModal').hidden){ closeInfo(); backSuppress=false; return true; }
-  if(!$('#setModal').hidden){ closeSettings(); backSuppress=false; return true; }
-  if(!$('#sortModal').hidden){ closeSort(); backSuppress=false; return true; }
-  if(!$('#searchbar').hidden){ closeSearch(); backSuppress=false; return true; }
-  if(!$('#drawer').hidden){ closeDrawer(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#colorModal'))){ closeColorPicker(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#dlgModal'))){ dlgClose(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#itemPickerModal'))){ closeItemPicker(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#quadrantModal'))){ closeQuadrantModal(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#updateModal'))){ closeUpdateModal(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#clModal'))){ closeChangelog(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#modal'))){ hideModal(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#ctxModal'))){ closeCtx(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#aiModal'))){ closeAi(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#tidyModal'))){ closeTidy(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#infoModal'))){ closeInfo(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#setModal'))){
+    if(settingsPage==='home')closeSettings();else backSettingsPage();
+    backSuppress=false;return true;
+  }
+  if(UiMotion.isOpen($('#sortModal'))){ closeSort(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#searchbar'))){ closeSearch(); backSuppress=false; return true; }
+  if(UiMotion.isOpen($('#drawer'))){ closeDrawer(); backSuppress=false; return true; }
   if(state.view.name==='list'){ backHome(); backSuppress=false; return true; }
   backSuppress=false;
   return false;
@@ -683,11 +712,11 @@ function setupNativeBack(){
 /* ========== 通用对话框（替代原生 alert/confirm/prompt） ========== */
 let dlgType='alert', dlgCb=null, dlgOnCancel=null;
 const DICONS={
-  info:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>',
-  question:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/></svg>',
-  edit:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
-  delete:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>',
-  check:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>'
+  info:'<morph-icon data-icon="info" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>',
+  question:'<morph-icon data-icon="question" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>',
+  edit:'<morph-icon data-icon="edit" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>',
+  delete:'<morph-icon data-icon="delete" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>',
+  check:'<morph-icon data-icon="check" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>'
 };
 function dlgShow(opts){
   dlgType=opts.type||'alert';
@@ -710,11 +739,11 @@ function dlgShow(opts){
   $('#dlgCancel').textContent=opts.cancelText||'取消';
   $('#dlgOk').textContent=opts.okText||'确定';
   pushLayer();
-  $('#dlgMask').hidden=false; $('#dlgModal').hidden=false;
+  UiMotion.show($('#dlgMask')); UiMotion.show($('#dlgModal'));
   if(needInput) setTimeout(()=>$('#dlgInput').focus(),60);
 }
 function dlgClose(){
-  $('#dlgMask').hidden=true; $('#dlgModal').hidden=true;
+  UiMotion.hide($('#dlgMask')); UiMotion.hide($('#dlgModal'));
   if(!backSuppress) syncBack();
 }
 function alertDlg(title,msg){ dlgShow({title,msg,type:'alert',okText:'知道了'}); }
@@ -773,7 +802,7 @@ function calcCostSummary(items, isDoneFn){
 function costCardHTML(summary, title){
   if(state.showCostSummary === false) return '';
   if(!summary || !summary.hasCost) return '';
-  return `<div class="cost-summary-card">
+  return `<div class="cost-summary-card" data-cost-key="${esc(title||'预算与花费汇总')}">
     <div class="csc-top">
       <div class="csc-title-wrap">
         <span class="csc-icon">¥</span>
@@ -786,7 +815,7 @@ function costCardHTML(summary, title){
       </div>
     </div>
     <div class="csc-progress-track">
-      <div class="csc-progress-bar" style="width:${summary.pctDone}%"></div>
+      <div class="csc-progress-bar" data-progress="${summary.pctDone}" style="width:${summary.pctDone}%"></div>
     </div>
     <div class="csc-bottom">
       <div class="csc-stats">
@@ -833,7 +862,7 @@ function moveToTrash(id){
   triggerHaptic('heavy');
   save();
   render();
-  if(!$('#trashModal').hidden) renderTrashModal();
+  if(UiMotion.isOpen($('#trashModal'))) renderTrashModal();
 }
 
 function restoreFromTrash(id){
@@ -1270,15 +1299,15 @@ function openTrashModal(){
     state.trash = [];
     save();
   }
-  $('#trashMask').hidden = false;
-  $('#trashModal').hidden = false;
+  UiMotion.show($('#trashMask'));
+  UiMotion.show($('#trashModal'));
   triggerHaptic('light');
   renderTrashModal();
 }
 
 function closeTrashModal(){
-  $('#trashMask').hidden = true;
-  $('#trashModal').hidden = true;
+  UiMotion.hide($('#trashMask'));
+  UiMotion.hide($('#trashModal'));
   if(!backSuppress) syncBack();
 }
 
@@ -1345,12 +1374,14 @@ function renderTrashModal(){
 
 /* ========== 渲染 ========== */
 function render(){
+  UiMotion.beforeRender();
   renderTitle();
   renderDrawer();
   initDrawerSortable();
   renderContent();
   initSortable();
   initSwipeGestures();
+  UiMotion.afterRender();
 }
 function renderTitle(){
   if(!state.type || state.type==='undefined' || (!state.types.includes(state.type) && state.type!=='全部')){
@@ -1369,7 +1400,11 @@ function renderTitle(){
     $('#appTitle').textContent = state.type==='全部'?'超级清单':state.type;
   }
   $('#homeGroupby').hidden=!isHome;
-  $$('#groupBySeg .seg').forEach(s=>s.classList.toggle('on',s.dataset.gb===state.groupBy));
+  $$('#groupBySeg .seg').forEach(s=>{
+    const selected=s.dataset.gb===state.groupBy;
+    s.classList.toggle('on',selected);
+    s.setAttribute('aria-pressed',String(selected));
+  });
   $('#appbarSortBtn').hidden=!isList;
   $('#appbarSortBtn').classList.toggle('on',state.sortKey!=='默认');
   $('#fabAi').hidden=!hasCloudKey();
@@ -1389,16 +1424,17 @@ function renderDrawer(){
   html+=`<button class="dnav-item dnav-all ${state.type==='全部'?'on':''}" data-t="全部"><span class="dnav-ic"></span>全部<span class="dnav-count">${totalActive}</span></button>`;
   state.types.forEach((t,i)=>{
     const active = state.type===t;
-    const col = active ? colorHexToUri(state.theme) : '%235f6368';
     html+=`<button class="dnav-item ${active?'on':''}" data-t="${esc(t)}" data-kind="type" data-idx="${i}">
-      <span class="dnav-ic" style="background-image:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22${col}%22><circle cx=%2212%22 cy=%2212%22 r=%229%22 fill=%22none%22 stroke=%22currentColor%22 stroke-width=%222%22/></svg>')"></span>${esc(t)}<span class="dnav-drag" aria-hidden="true"></span><span class="dnav-count">${(counts[t]||0)}</span></button>`;
+      <span class="dnav-ic"></span>${esc(t)}<span class="dnav-drag" aria-hidden="true"></span><span class="dnav-count">${(counts[t]||0)}</span></button>`;
   });
   html+=`<button class="dnav-add" id="dnavAdd" data-addtype="1">＋ 新增类型</button>`;
   const trashCount = (state.trash || []).length;
   html += '<div class="dnav-divider"></div><button class="dnav-item dnav-trash" id="dnavTrash" data-kind="trash"><span class="dnav-ic dnav-ic-trash"></span>回收站<span class="dnav-count">' + trashCount + '</span></button>';
   nav.innerHTML = html;
+  nav.querySelectorAll('.dnav-item[data-t]').forEach(button=>{
+    if(button.classList.contains('on')) button.setAttribute('aria-current','page');
+  });
 }
-function colorHexToUri(hex){ return '%23'+hex.slice(1) }
 function renderContent(){
   const wrap=$('#content'), empty=$('#emptyState');
   if(state.view.name==='home'){ renderHome(wrap,empty); }
@@ -1423,20 +1459,63 @@ function renderHome(wrap,empty){
     const preview=undone.slice(0,3);
     const gSummary=calcCostSummary(g.items, isDone);
     const costBadge=(showCost && gSummary.hasCost) ? `<span class="sec-cost-pill" title="预估总额: ¥${money(gSummary.totalCost)}">¥${money(gSummary.undoneCost>0?gSummary.undoneCost:gSummary.totalCost)}</span>` : '';
-    const arrowSvg=`<span class="sec-arrow" style="background:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%235f6368%22><path d=%22M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z/%22/></svg>') center/contain no-repeat;width:15px;height:15px;display:inline-block;vertical-align:middle"></span>`;
+    const arrowSvg=`<span class="sec-arrow"></span>`;
     html+=`<div class="section">
       <div class="section-card" data-open="${esc(g.key)}">
-        <div class="section-head" data-open="${esc(g.key)}">
+        <button type="button" class="section-head" data-open="${esc(g.key)}" aria-label="打开${esc(g.key)}分组">
           <span class="sec-title">${esc(g.key)}</span>
           <span class="sec-count">${g.items.length}</span>
           ${costBadge}
           <span class="sec-right">${undone.length?'未完成 '+undone.length:'全完成'}${arrowSvg}</span>
-        </div>
+        </button>
         ${preview.map(it=>secItemHTML(it,g.key)).join('')}
       </div>
     </div>`;
   });
   wrap.innerHTML=html;
+}
+function itemSubtasks(it){
+  return Array.isArray(it.subtasks) ? it.subtasks.filter(task=>task && typeof task.title==='string' && task.title.trim()) : [];
+}
+function subtaskProgressHTML(it){
+  const tasks=itemSubtasks(it), done=tasks.filter(task=>task.done).length;
+  const pct=tasks.length?Math.round(done/tasks.length*100):0;
+  return `<sl-progress-ring class="subtask-ring" value="${pct}" data-complete="${done===tasks.length}" style="--progress:${pct}" aria-hidden="true"><span>${done}</span></sl-progress-ring><span class="subtask-count">${tasks.length} 项</span><span class="subtask-chevron" aria-hidden="true"></span>`;
+}
+function subtasksHTML(it){
+  const tasks=itemSubtasks(it);
+  if(!tasks.length) return '';
+  return `<details class="subtask-list"><summary data-subtask-summary="${esc(it.id)}" aria-label="子任务，已完成 ${tasks.filter(task=>task.done).length} 项，共 ${tasks.length} 项" title="展开或收起子任务">${subtaskProgressHTML(it)}</summary>
+    <div class="subtask-steps">${tasks.map((task,index)=>`<label class="subtask-check ${task.done?'done':''}"><span class="subtask-toggle"><input type="checkbox" data-subtask="${esc(it.id)}" data-subtask-index="${index}" ${task.done?'checked':''}></span><span>${esc(task.title)}</span></label>`).join('')}</div>
+  </details>`;
+}
+function toggleSubtask(itemId,index,done){
+  const it=state.items.find(item=>item.id===itemId);
+  const tasks=it ? itemSubtasks(it) : [];
+  if(!tasks[index]) return;
+  tasks[index].done=done;
+  if(!done && it.done){
+    it.done=false; it.doneScenes=[]; it.doneTypes=[];
+    syncItemDoneToQuadrant(it.id,false);
+    render();
+  } else {
+    $$('[data-subtask]').filter(input=>input.dataset.subtask===itemId).forEach(input=>{
+      const task=tasks[Number(input.dataset.subtaskIndex)];
+      input.checked=!!task.done;
+      input.closest('label').classList.toggle('done',!!task.done);
+    });
+    $$('[data-subtask-summary]').filter(el=>el.dataset.subtaskSummary===itemId).forEach(el=>{
+      UiMotion.progress(el,tasks.filter(task=>task.done).length/tasks.length*100,tasks.filter(task=>task.done).length);
+      el.setAttribute('aria-label',`子任务，已完成 ${tasks.filter(task=>task.done).length} 项，共 ${tasks.length} 项`);
+    });
+  }
+  if(done && !it.done && tasks.every(task=>task.done)){
+    // 子任务完成代表整个事项完成，不受当前场景或类型分组限制。
+    toggleDone(itemId);
+    return;
+  }
+  triggerHaptic('light');
+  save();
 }
 function secItemHTML(it,groupKey){
   const done = isItemDoneIn(it, state.groupBy, groupKey);
@@ -1452,31 +1531,37 @@ function secItemHTML(it,groupKey){
         <span class="swipe-ic swipe-ic-trash"></span>
       </div>
     </div>
-    <div class="swipe-front">
-      <span class="card-check ${done?'done':''}" data-done="${it.id}" data-done-kind="${state.groupBy}" data-done-key="${esc(groupKey||'')}"></span>
+    <div class="swipe-front${itemSubtasks(it).length?' has-subtasks':''}">
+      <button type="button" class="card-check ${done?'done':''}" role="checkbox" aria-checked="${done}" aria-label="完成事项：${esc(it.title)}" data-done="${it.id}" data-done-kind="${state.groupBy}" data-done-key="${esc(groupKey||'')}"></button>
       <div class="card-body">
-        <div class="card-title ${done?'done':''}">${esc(it.title)}</div>
+        <div class="card-main">
+        <div class="card-heading">
+          <div class="card-title ${done?'done':''}">${esc(it.title)}</div>
+          ${it.repeatDays?`<span class="tag repeat-tag">每 ${esc(it.repeatDays)} 天重复</span>`:''}
+        </div>
         <div class="card-meta">${secMeta(it, done)}</div>
+        </div>
+        ${subtasksHTML(it)}
       </div>
     </div>
   </div>`;
 }
-function secMeta(it, isDone){
-  let h='';
-  if(it.cost) h+=`<span class="cost">¥${money(it.cost)}</span>`;
-  if(it.star) h+=`<span class="star">${'★'.repeat(it.star)}</span>`;
+function secMeta(it, isDone, showTypes=state.type==='全部'){
+  let h='',facts='';
+  if(it.cost) facts+=`<span class="cost">¥${money(it.cost)}</span>`;
+  if(it.star) facts+=`<span class="star">${'★'.repeat(it.star)}</span>`;
   if(it.due){
     const ds = getDueStatus(it.due, isDone !== undefined ? isDone : !!it.done);
     if(ds) h+=`<span class="tag ${ds.className}" title="${esc(ds.title)}">${esc(ds.text)}</span>`;
   }
-  if(state.type==='全部'){
+  if(showTypes){
     itemTypes(it).forEach(t=>{ h+=`<span class="tag type-blue">${esc(t)}</span>`; });
   }
   if(state.groupBy!=='scene'){
     itemScenes(it).forEach(s=>{ h+=`<span class="tag">${esc(s)}</span>`; });
   }
   if(state.groupBy!=='time' && it.time) h+=`<span class="tag">${esc(it.time)}</span>`;
-  return h;
+  return (facts?`<span class="meta-facts">${facts}</span>`:'')+(h?`<span class="meta-tags">${h}</span>`:'');
 }
 function renderList(wrap,empty){
   const g=sectionGroups().find(x=>x.key===state.view.group);
@@ -1515,33 +1600,26 @@ function renderList(wrap,empty){
           <span class="swipe-ic swipe-ic-trash"></span>
         </div>
       </div>
-      <div class="swipe-front">
-        <span class="card-check ${itemDone?'done':''}" data-done="${it.id}" data-done-kind="${state.groupBy}" data-done-key="${esc(g.key)}"></span>
+      <div class="swipe-front${itemSubtasks(it).length?' has-subtasks':''}">
+        <button type="button" class="card-check ${itemDone?'done':''}" role="checkbox" aria-checked="${itemDone}" aria-label="完成事项：${esc(it.title)}" data-done="${it.id}" data-done-kind="${state.groupBy}" data-done-key="${esc(g.key)}"></button>
         <div class="card-body">
-          <div class="card-title ${itemDone?'done':''}">${esc(it.title)}</div>
+          <div class="card-main">
+          <div class="card-heading">
+            <div class="card-title ${itemDone?'done':''}">${esc(it.title)}</div>
+            ${it.repeatDays?`<span class="tag repeat-tag">每 ${esc(it.repeatDays)} 天重复</span>`:''}
+          </div>
           <div class="card-meta">${fullMeta(it, itemDone)}</div>
+          </div>
+          ${subtasksHTML(it)}
         </div>
         ${drag}
-        <span class="chev" style="background:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%235f6368%22><path d=%22M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z/%22/></svg>') center/contain no-repeat"></span>
       </div>
     </div>`;
   });
   wrap.innerHTML=html;
 }
 function fullMeta(it, isDone){
-  let h='';
-  itemTypes(it).forEach(t=>{ h+=`<span class="tag type-blue">${esc(t)}</span>`; });
-  if(state.groupBy!=='scene'){
-    itemScenes(it).forEach(s=>{ h+=`<span class="tag">${esc(s)}</span>`; });
-  }
-  if(state.groupBy!=='time' && it.time) h+=`<span class="tag">${esc(it.time)}</span>`;
-  if(it.cost) h+=`<span class="cost">¥${money(it.cost)}</span>`;
-  if(it.star) h+=`<span class="star">${'★'.repeat(it.star)}</span>`;
-  if(it.due){
-    const ds = getDueStatus(it.due, isDone !== undefined ? isDone : !!it.done);
-    if(ds) h+=`<span class="tag ${ds.className}" title="${esc(ds.title)}">${esc(ds.text)}</span>`;
-  }
-  return h;
+  return secMeta(it,isDone,true);
 }
 function renderEmptyText(){
   $('#emptyTitle').textContent = state.search?'无搜索结果':(state.view.name==='home'?'暂无事项':'该分组暂无事项');
@@ -1563,6 +1641,13 @@ function applySpacing(){
   root.style.setProperty('--item-font', s.font+'px');
   root.style.setProperty('--sec-gap', Math.round(s.gap*1.6)+'px');
 }
+function updateSliderProgress(slider){
+  if(!slider) return;
+  const min=Number(slider.min), max=Number(slider.max);
+  const progress=max>min?Math.max(0,Math.min(100,(Number(slider.value)-min)/(max-min)*100)):0;
+  slider.style.setProperty('--slider-progress',progress+'%');
+  slider.parentElement.style.setProperty('--slider-progress',progress+'%');
+}
 function renderSpacingControls(){
   const s=state.spacing||SPACING_PRESETS.standard;
   const gVal=$('#valItemGap'), pVal=$('#valItemPad'), fVal=$('#valItemFont');
@@ -1573,6 +1658,7 @@ function renderSpacingControls(){
   if(gSld) gSld.value=s.gap;
   if(pSld) pSld.value=s.pad;
   if(fSld) fSld.value=s.font;
+  [gSld,pSld,fSld].forEach(updateSliderProgress);
 
   const box=$('#spacingPresetSeg');
   if(box){
@@ -1589,28 +1675,41 @@ function renderSpacingControls(){
 }
 function init(){
   load();
-  applyColorMode();
+  const params=new URLSearchParams(window.location.search);
+  // Initialize demo data after TEST_DEMO_DATA exists, in its own storage namespace.
+  if(params.get('seed')==='1'||params.get('test')==='1'||(DEMO_MODE&&!state.items.length))loadTestDemoData();
+  applyInterfaceStyle();
   applyCustomBg();
   applySpacing();
   buildStars();
   render();
   setTimeout(setupNativeBack,300);
-  setTimeout(()=>checkUpdate(true),900);
-  const params=new URLSearchParams(window.location.search);
+  const showUiStyleNotice=!DEMO_MODE&&!state.uiStyleNoticeSeen;
+  if(showUiStyleNotice){
+    dlgShow({
+      title:'全新 UI 风格已上线',
+      msg:'本次更新新增 Material 3 界面风格\n想体验新的 UI，可打开菜单 → 关于 → 界面风格，选择“Material 3”\n不喜欢新风格？在“关于 → 界面风格”选择“经典”即可关闭',
+      okText:'我知道了',
+      onOk:()=>{setTimeout(()=>checkUpdate(true),300);}
+    });
+    state.uiStyleNoticeSeen=true;
+    save();
+  }
+  if(!showUiStyleNotice)setTimeout(()=>checkUpdate(true),900);
   if(params.get('quadrant')==='1'||params.get('view')==='quadrant'){
     setTimeout(openQuadrantModal,250);
   }
 }
 
 /* 抽屉 */
-function openDrawer(){ pushLayer(); $('#drawerMask').hidden=false; $('#drawer').hidden=false; }
-function closeDrawer(){ $('#drawerMask').hidden=true; $('#drawer').hidden=true; renderDrawer(); if(!backSuppress)syncBack(); }
-
+function openDrawer(){ pushLayer(); UiMotion.show($('#drawerMask')); UiMotion.show($('#drawer')); }
+function closeDrawer(){ if(!UiMotion.isOpen($('#drawerMask')))return; UiMotion.hide($('#drawerMask')); UiMotion.hide($('#drawer')); if(!backSuppress)syncBack(); }
 /* 搜索栏 */
 function openSearch(){
+  if(UiMotion.isOpen($('#searchbar'))) return;
   pushLayer();
   $('.appbar-top').hidden=true;
-  $('#searchbar').hidden=false;
+  UiMotion.show($('#searchbar'));
   const input=$('#searchInput');
   if(input){
     input.focus();
@@ -1618,12 +1717,20 @@ function openSearch(){
   doSearch();
 }
 function closeSearch(){
-  $('#searchbar').hidden=true;
-  $('.appbar-top').hidden=false;
-  state.search='';
-  const input=$('#searchInput');
-  if(input) input.value='';
-  render();
+  if(!UiMotion.isOpen($('#searchbar'))) return;
+  const closing=UiMotion.hide($('#searchbar'));
+  const finish=()=>{
+    if(UiMotion.isOpen($('#searchbar'))) return;
+    $('.appbar-top').hidden=false;
+    UiMotion.animate($('.appbar-top'),{opacity:[0,1]},{duration:.16});
+    state.search='';
+    const input=$('#searchInput');
+    if(input) input.value='';
+    render();
+    $('#searchBtn').focus();
+  };
+  if(closing) closing.then(finish).catch(()=>{});
+  else finish();
   if(!backSuppress)syncBack();
 }
 function doSearch(){
@@ -1638,6 +1745,7 @@ function doSearch(){
 document.addEventListener('DOMContentLoaded',()=>{
   init();
   initCustomBgListeners();
+  setupInteractiveSliderPreviews();
   window.addEventListener('popstate',()=>{ if(codeBack){ codeBack=false; return } closeTopLayer(); });
   $('#hamburger').addEventListener('click',openDrawer);
   $('#backBtn').addEventListener('click',()=>{ backHome(); syncBack(); });
@@ -1667,9 +1775,19 @@ document.addEventListener('DOMContentLoaded',()=>{
     const seg=e.target.closest('.seg'); if(!seg)return;
     state.groupBy=seg.dataset.gb; state.view={name:'home'}; save(); render();
   });
-  $('#drawerSettings').addEventListener('click',()=>{ closeDrawer(); openSettings(); });
+  $('#drawerSettings').addEventListener('click',()=>{
+    UiMotion.hide($('#drawerMask'));UiMotion.hide($('#drawer'));
+    openSettings(true);
+  });
   $('#drawerTheme').addEventListener('click',toggleColorMode);
   const cms=$('#colorModeSeg');
+  $('#interfaceStyleSeg').addEventListener('click',e=>{
+    const seg=e.target.closest('[data-style]');
+    if(!seg)return;
+    state.interfaceStyle=seg.dataset.style;
+    applyInterfaceStyle();
+    save();
+  });
   if(cms){
     cms.addEventListener('click',e=>{
       const seg=e.target.closest('.seg');
@@ -1694,40 +1812,13 @@ document.addEventListener('DOMContentLoaded',()=>{
       renderSpacingControls();
     });
   }
-  const onSliderInput=()=>{
-    const gap=parseFloat($('#sliderItemGap').value)||10;
-    const pad=parseFloat($('#sliderItemPad').value)||13;
-    const font=parseFloat($('#sliderItemFont').value)||15;
-    let preset='custom';
-    for(const [k,p] of Object.entries(SPACING_PRESETS)){
-      if(gap===p.gap&&pad===p.pad&&font===p.font){ preset=k; break; }
-    }
-    state.spacing={preset,gap,pad,font};
-    applySpacing();
-    const gVal=$('#valItemGap'), pVal=$('#valItemPad'), fVal=$('#valItemFont');
-    if(gVal)gVal.textContent=gap+'px';
-    if(pVal)pVal.textContent=pad+'px';
-    if(fVal)fVal.textContent=font+'px';
-    const box=$('#spacingPresetSeg');
-    if(box){
-      box.querySelectorAll('.seg').forEach(btn=>{
-        btn.classList.toggle('on',btn.dataset.preset===preset);
-      });
-    }
-  };
-  ['sliderItemGap','sliderItemPad','sliderItemFont'].forEach(id=>{
-    const el=$('#'+id);
-    if(el){
-      el.addEventListener('input',onSliderInput);
-      el.addEventListener('change',()=>{ save(); });
-    }
-  });
   $('#drawerInfo').addEventListener('click',()=>{ closeDrawer(); openInfo(); });
   const onSystemColorChange=()=>{ if(state.colorMode==='system')applyColorMode(); };
   if(colorModeQuery.addEventListener)colorModeQuery.addEventListener('change',onSystemColorChange); else colorModeQuery.addListener(onSystemColorChange);
 
   /* 内容事件（委托） */
   $('#content').addEventListener('click',e=>{
+    if(e.target.closest('.subtask-list')){ e.stopPropagation(); return; }
     if(Date.now() < suppressItemClickUntil) return;
     if(e.target.closest('.drag-handle'))return;
     const done=e.target.closest('[data-done]');
@@ -1744,9 +1835,20 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(open2){ enterGroup(open2.dataset.open2); return }
   });
 
+  $('#content').addEventListener('change',e=>{
+    if(e.target.matches('[data-subtask]')) toggleSubtask(e.target.dataset.subtask,Number(e.target.dataset.subtaskIndex),e.target.checked);
+  });
+
   /* 搜索 */
   $('#searchBtn').addEventListener('click',openSearch);
   $('#searchBackBtn').addEventListener('click',closeSearch);
+  document.addEventListener('click',e=>{
+    if(!UiMotion.isOpen($('#searchbar')) || e.target.closest('#searchbar')) return;
+    // The first tap outside dismisses search without activating the content underneath.
+    e.preventDefault();
+    e.stopPropagation();
+    closeSearch();
+  },true);
   const searchInput=$('#searchInput');
   if(searchInput){
     searchInput.addEventListener('input',doSearch);
@@ -1807,9 +1909,9 @@ function openCtxMenu(item){
   if(titleEl) titleEl.textContent='管理'+kn;
   const nameEl=$('#ctxTagName');
   if(nameEl) nameEl.textContent=ctxName;
-  $('#ctxMask').hidden=false; $('#ctxModal').hidden=false;
+  UiMotion.show($('#ctxMask')); UiMotion.show($('#ctxModal'));
 }
-function closeCtx(){ $('#ctxMask').hidden=true; $('#ctxModal').hidden=true; if(!backSuppress)syncBack(); }
+function closeCtx(){ UiMotion.hide($('#ctxMask')); UiMotion.hide($('#ctxModal')); if(!backSuppress)syncBack(); }
 function ctxRename(){
   const kind=ctxKind, idx=ctxIdx;
   const arr = kind==='type'?state.types:kind==='scene'?state.scenes:state.times;
@@ -1939,27 +2041,24 @@ function toggleDone(id, kind, key){
     }
   }
 
+  if(!targetDone || it.done) syncSubtasksDone(it);
+  createRepeatItem(state.items, it);
   syncItemDoneToQuadrant(it.id, it.done);
   triggerHaptic(targetDone ? 'medium' : 'light');
   save();
 
-  // 1. 任务项目自身渐变动效：复选框弹动、标题划线渐变、卡片轻微收缩
+  // 仅为当前事项播放完成动效，其他标题保持稳定。
   const checkEl = document.querySelector(`[data-done="${id}"]`);
   if(checkEl){
     checkEl.classList.toggle('done', targetDone);
-    if(targetDone){
-      checkEl.classList.remove('just-checked');
-      void checkEl.offsetWidth;
-      checkEl.classList.add('just-checked');
-    } else {
-      checkEl.classList.remove('just-checked');
-    }
+    checkEl.setAttribute('aria-checked',String(targetDone));
+    UiMotion.check(checkEl,targetDone);
   }
   const itemRow = document.querySelector(`[data-item="${id}"]`);
   if(itemRow){
     const titleEl = itemRow.querySelector('.card-title');
     if(titleEl) titleEl.classList.toggle('done', targetDone);
-    itemRow.classList.add('completing');
+    UiMotion.animate(itemRow.querySelector('.card-body'),{opacity:[1,targetDone ? 0.6 : 1],transform:['translateX(0px)',targetDone?'translateX(3px)':'translateX(0px)']},{duration:.22});
     const dueTag = itemRow.querySelector('.tag[class*="due-"]');
     if(dueTag && it.due){
       const ds = getDueStatus(it.due, targetDone);
@@ -1971,14 +2070,14 @@ function toggleDone(id, kind, key){
     }
   }
 
-  // 2. cost-summary-card 进度条与数值平滑渐变过渡
+  // 数值立即更新，预算条由 GSAP 过渡到新比例。
   const curItems = currentItems();
   const summary = (state.view.name === 'home')
     ? calcCostSummary(curItems, i => !!i.done)
     : calcCostSummary((sectionGroups().find(x=>x.key===state.view.group)||{}).items||[], i => isItemDoneIn(i, state.groupBy, state.view.group));
   if(summary && summary.hasCost){
     const bar = document.querySelector('.csc-progress-bar');
-    if(bar) bar.style.width = summary.pctDone + '%';
+    if(bar) UiMotion.width(bar,summary.pctDone);
     const pctEl = document.querySelector('.csc-pct');
     if(pctEl) pctEl.textContent = summary.pctDone + '% 已支出';
     const undoneNum = document.querySelector('.csc-stat.undone .csc-stat-num');
@@ -1987,7 +2086,7 @@ function toggleDone(id, kind, key){
     if(doneNum) doneNum.textContent = '¥' + money(summary.doneCost);
   }
 
-  // 3. 待平滑渐变动效展现后，重排列表沉底与更新抽屉计数
+  // 完成动效结束后更新列表顺序与抽屉计数。
   if(toggleDoneTimer) clearTimeout(toggleDoneTimer);
   toggleDoneTimer = setTimeout(()=>{
     toggleDoneTimer = null;
@@ -2012,6 +2111,17 @@ function syncItemDoneToQuadrant(itemId, isDone){
 
 /* ========== 添加/编辑弹窗 ========== */
 let editId=null, editStar=0, modalOpen=false;
+function appendSubtaskEditor(task={}){
+  $('#fSubtasks').insertAdjacentHTML('beforeend',`<div class="subtask-edit" data-subtask-id="${esc(task.id||uid())}">
+    <input type="checkbox" aria-label="子任务完成状态" ${task.done?'checked':''}>
+    <input type="text" placeholder="子任务内容" value="${esc(task.title||'')}" autocomplete="off">
+    <button type="button" class="btn-text danger" data-remove-subtask aria-label="移除子任务"><morph-icon data-icon="close" aria-hidden="true"></morph-icon></button>
+  </div>`);
+}
+function renderSubtaskEditor(it={}){
+  $('#fSubtasks').innerHTML='';
+  itemSubtasks(it).forEach(appendSubtaskEditor);
+}
 function buildStars(){ const s=$('#fStars'); for(let i=1;i<=5;i++){const b=document.createElement('button');b.type='button';b.className='star-b';b.dataset.v=i;b.textContent='★';s.appendChild(b);} }
 function segHTML(kind){ const arr=kind==='type'?state.types:kind==='scene'?state.scenes:state.times; return arr.map(v=>`<button class="seg-chip" data-k="${kind}" data-v="${esc(v)}">${esc(v)}</button>`).join('')+`<button class="seg-chip mini" data-add="${kind}">+</button>`; }
 function renderSuggest(sug){
@@ -2027,7 +2137,9 @@ function openAdd(pref){
   triggerHaptic('light');
   editId=null; editStar=(pref&&pref.star)||0; modalOpen=true;
   $('#modalTitle').textContent='新建事项';
-  $('#fTitle').value=(pref&&pref.title)||''; $('#fNote').value=(pref&&pref.note)||''; $('#fCost').value=(pref&&pref.cost!=null)?pref.cost:''; $('#fDue').value=(pref&&pref.due)||'';
+  $('#fTitle').value=(pref&&pref.title)||''; $('#fNote').value=(pref&&pref.note)||''; $('#fCost').value=(pref&&pref.cost!=null)?pref.cost:''; DuePicker.set((pref&&pref.due)||'');
+  $('#fRepeatDays').value=(pref&&pref.repeatDays)||'';
+  renderSubtaskEditor(pref||{});
   $('#fTypeSeg').innerHTML=segHTML('type'); $('#fSceneSeg').innerHTML=segHTML('scene'); $('#fTimeSeg').innerHTML=segHTML('time');
   $$('#fTypeSeg .seg-chip, #fSceneSeg .seg-chip, #fTimeSeg .seg-chip').forEach(c=>c.classList.remove('on'));
   // 预选当前类型
@@ -2053,7 +2165,9 @@ function openEdit(it){
   editId=it.id; editStar=it.star||0; modalOpen=true;
   $('#modalTitle').textContent='编辑事项';
   $('#fTitle').value=it.title; $('#fNote').value=it.note||'';
-  $('#fCost').value=(it.cost!==null&&it.cost!==undefined)?it.cost:''; $('#fDue').value=it.due||'';
+  $('#fCost').value=(it.cost!==null&&it.cost!==undefined)?it.cost:''; DuePicker.set(it.due||'');
+  $('#fRepeatDays').value=it.repeatDays||'';
+  renderSubtaskEditor(it);
   $('#fTypeSeg').innerHTML=segHTML('type'); $('#fSceneSeg').innerHTML=segHTML('scene'); $('#fTimeSeg').innerHTML=segHTML('time');
   setSeg('type',itemTypes(it)); setSeg('scene',itemScenes(it)); setSeg('time',it.time||'');
   $$('.star-b').forEach((s,i)=>s.classList.toggle('on',i<editStar));
@@ -2068,8 +2182,8 @@ function setSeg(kind,val){
     if(el) el.classList.add('on');
   });
 }
-function showModal(){ pushLayer(); $('#modalMask').hidden=false; $('#modal').hidden=false; $('#fTitle').focus(); }
-function hideModal(){ $('#modal').hidden=true; $('#modalMask').hidden=true; modalOpen=false; pendingQuadrantAddKey=null; if(!backSuppress)syncBack(); }
+function showModal(){ pushLayer(); UiMotion.show($('#modalMask')); UiMotion.show($('#modal')); $('#fTitle').focus(); }
+function hideModal(){ DuePicker.close(); UiMotion.hide($('#modal')); UiMotion.hide($('#modalMask')); modalOpen=false; pendingQuadrantAddKey=null; if(!backSuppress)syncBack(); }
 
 function segSelAll(kind){
   const cap = kind.charAt(0).toUpperCase() + kind.slice(1);
@@ -2083,6 +2197,13 @@ function segSel(kind){
 }
 function gather(){
   const title=$('#fTitle').value.trim(); if(!title){ $('#fTitle').focus(); return null }
+  const repeatInput = $('#fRepeatDays');
+  const repeatDays = repeatInput.value === '' ? 0 : Number(repeatInput.value);
+  if(repeatInput.validity.badInput || !Number.isInteger(repeatDays) || repeatDays < 0 || repeatDays > 36500 || (repeatInput.value !== '' && repeatDays === 0)){
+    alertDlg('重复天数无效', '请输入 1 到 36500 的整数天数，或留空表示不重复。');
+    repeatInput.focus();
+    return null;
+  }
   const types=segSelAll('type');
   const scenes=segSelAll('scene');
   const time=segSel('time');
@@ -2096,11 +2217,18 @@ function gather(){
     time,
     cost: isNaN(parseFloat($('#fCost').value)) ? null : parseFloat($('#fCost').value),
     due: $('#fDue').value || '',
+    repeatDays,
+    subtasks: $$('#fSubtasks .subtask-edit').map(row=>({
+      id:row.dataset.subtaskId,
+      title:row.querySelector('input[type="text"]').value.trim(),
+      done:row.querySelector('input[type="checkbox"]').checked
+    })).filter(task=>task.title),
     star: editStar
   };
 }
 function saveForm(){
   const g=gather(); if(!g)return;
+  let savedItem;
   $$('#aiSuggestBox input:checked').forEach(cb=>{
     const kind=cb.dataset.kind, name=cb.value;
     addTagSilent(kind,name);
@@ -2116,6 +2244,7 @@ function saveForm(){
   });
   if(editId){
     const it=state.items.find(x=>x.id===editId);
+    savedItem=it;
     if(it){
       Object.assign(it,g);
       if(Array.isArray(it.doneScenes)){
@@ -2127,10 +2256,15 @@ function saveForm(){
       if(it.scenes.length>0){
         it.done=it.scenes.every(s=>(it.doneScenes||[]).includes(s));
       }
+      if(it.done && it.subtasks.some(task=>!task.done)){
+        it.done=false; it.doneScenes=[]; it.doneTypes=[];
+        syncItemDoneToQuadrant(it.id,false);
+      }
     }
   }
   else {
     const newItem = Object.assign({id:uid(),done:false,doneScenes:[],doneTypes:[],created:Date.now()},g);
+    savedItem=newItem;
     state.items.push(newItem);
     if(!Array.isArray(state.widget2x2)) state.widget2x2=[];
     state.widget2x2.push({id:newItem.id});
@@ -2138,6 +2272,12 @@ function saveForm(){
       addQuadrantItem(pendingQuadrantAddKey, newItem.title, newItem.id);
       pendingQuadrantAddKey = null;
     }
+  }
+  const tasks=savedItem ? itemSubtasks(savedItem) : [];
+  if(savedItem && !savedItem.done && tasks.length && tasks.every(task=>task.done)){
+    toggleDone(savedItem.id);
+    hideModal();
+    return;
   }
   triggerHaptic('light'); save(); render(); hideModal();
 }
@@ -2148,9 +2288,9 @@ function openSort(){
   const opts=[['默认','默认'],['花费','花费'],['重要','重要'],['日期','截止日期'],['创建','创建时间']];
   $('#sortOptions').innerHTML=opts.map(o=>`<label><input type="radio" name="sort" value="${o[0]}" ${state.sortKey===o[0]?'checked':''}><span>${o[1]}</span></label>`).join('');
   $('#sortAsc').checked=state.sortAsc; $('#sortAsc').disabled=state.sortKey==='默认';
-  $('#sortMask').hidden=false; $('#sortModal').hidden=false;
+  UiMotion.show($('#sortMask')); UiMotion.show($('#sortModal'));
 }
-function closeSort(){ $('#sortMask').hidden=true; $('#sortModal').hidden=true; if(!backSuppress)syncBack(); }
+function closeSort(){ UiMotion.hide($('#sortMask')); UiMotion.hide($('#sortModal')); if(!backSuppress)syncBack(); }
 function renderUpdateSettings(){
   const chkCheck=$('#autoCheckUpdate');
   if(chkCheck) chkCheck.checked=state.autoCheckUpdate!==false;
@@ -2173,20 +2313,41 @@ function renderWidget2x2Settings(){
   if(blurVal) blurVal.textContent=state.widget2x2Background.blur+'dp';
 }
 
-function openSettings(){
-  pushLayer();
+let settingsPage='home';
+function showSettingsPage(page){
+  settingsPage=page;
+  $('#settingsHome').hidden=page!=='home';
+  $('#settingsAppearance').hidden=page!=='appearance';
+  $('#settingsFeatures').hidden=page!=='features';
+  $('#setBack').hidden=page==='home';
+  $('#setTitle').textContent=page==='appearance'?'外观设置':page==='features'?'功能设置':'设置';
+  $('#setModal .modal-body').scrollTop=0;
+}
+function backSettingsPage(){
+  const page=settingsPage;
+  showSettingsPage('home');
+  $('#settingsHome [data-settings-page="'+page+'"]').focus();
+  if(!backSuppress)syncBack();
+}
+function openSettings(reuseLayer=false){
+  if(!reuseLayer)pushLayer();
+  showSettingsPage('home');
   renderCustomBgSettings();
   renderColorModeSeg();
+  renderInterfaceStyleSeg();
   renderSpacingControls();
   renderPalette();
   renderSetGroups();
   renderAiCfg();
   renderUpdateSettings();
   renderWidget2x2Settings();
-  $('#setMask').hidden=false;
-  $('#setModal').hidden=false;
+  UiMotion.show($('#setMask'));
+  UiMotion.show($('#setModal'));
 }
-function closeSettings(){ $('#setMask').hidden=true; $('#setModal').hidden=true; if(!backSuppress)syncBack(); }
+function closeSettings(){
+  UiMotion.hide($('#setMask'));UiMotion.hide($('#setModal'));
+  if(!backSuppress){codeBack=true;history.go(settingsPage==='home'?-1:-2);}
+}
 
 
 
@@ -2248,6 +2409,7 @@ function renderCustomBgSettings(){
   if (opacityRow) opacityRow.style.display = (bg.type !== 'default') ? 'block' : 'none';
 
   if (opacitySlider) opacitySlider.value = bg.opacity || 80;
+  updateSliderProgress(opacitySlider);
   if (opacityVal) opacityVal.textContent = (bg.opacity || 80) + '%';
   if (customBgColor && bg.color) customBgColor.value = bg.color;
 
@@ -2279,7 +2441,7 @@ function initCustomBgListeners(){
   const customBgBtn = document.getElementById('customBgColorBtn');
   const customBgInput = document.getElementById('customBgColor');
   if (customBgBtn && customBgInput) {
-    customBgBtn.addEventListener('click', () => customBgInput.click());
+    customBgBtn.addEventListener('click', () => openColorPicker('background'));
     customBgInput.addEventListener('input', e => {
       if (!e.target.value) return;
       if (!state.customBg) state.customBg = { type: 'color', color: e.target.value, image: '', opacity: 80 };
@@ -2320,19 +2482,322 @@ function initCustomBgListeners(){
       renderCustomBgSettings();
     });
   }
+}
 
-  const opacitySlider = document.getElementById('sliderBgOpacity');
-  const opacityVal = document.getElementById('valBgOpacity');
-  if (opacitySlider) {
-    opacitySlider.addEventListener('input', e => {
-      const val = parseInt(e.target.value, 10) || 80;
-      if (opacityVal) opacityVal.textContent = val + '%';
-      if (!state.customBg) state.customBg = { type: 'default', color: '#f2f5fb', image: '', opacity: val };
-      state.customBg.opacity = val;
-      applyCustomBg();
-      save();
-    });
+/* ========== 交互滑块临时沉浸式预览系统（透明度 / 列表间距 / 内边距 / 字号） ========== */
+function setupInteractiveSliderPreviews() {
+  const previewBar = document.getElementById('opacityPreviewBar');
+  const previewIcon = document.getElementById('opPreviewIcon');
+  const previewTitleText = document.getElementById('opPreviewTitleText');
+  const previewVal = document.getElementById('opPreviewVal');
+  const previewSlider = document.getElementById('opPreviewSlider');
+  if (!previewBar || !previewSlider) return;
+
+  let activeCfg = null;
+  let isDragging = false;
+  let pointerDown = false;
+  let scrollGesture = false;
+  let startX = 0;
+  let startY = 0;
+  let dragWidth = 1;
+  let dragValue = 0;
+  let closeTimer = null;
+
+  function syncPresetSeg() {
+    const s = state.spacing || SPACING_PRESETS.standard;
+    let preset = 'custom';
+    for (const [k, p] of Object.entries(SPACING_PRESETS)) {
+      if (s.gap === p.gap && s.pad === p.pad && s.font === p.font) { preset = k; break; }
+    }
+    s.preset = preset;
+    const box = document.getElementById('spacingPresetSeg');
+    if (box) {
+      box.querySelectorAll('.seg').forEach(btn => {
+        btn.classList.toggle('on', btn.dataset.preset === preset);
+      });
+    }
   }
+
+  const configs = [
+    {
+      id: 'sliderBgOpacity',
+      valId: 'valBgOpacity',
+      rowSelector: '#bgOpacityRow',
+      title: '背景透明度调节',
+      iconSvg: '<morph-icon data-icon="contrast" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>',
+      min: 10,
+      max: 100,
+      step: 5,
+      format: v => Math.round(v) + '%',
+      get: () => (state.customBg && typeof state.customBg.opacity === 'number') ? state.customBg.opacity : 80,
+      set: v => {
+        if (!state.customBg) state.customBg = { type: 'default', color: '#f2f5fb', image: '', opacity: v };
+        state.customBg.opacity = v;
+        applyCustomBg();
+      }
+    },
+    {
+      id: 'sliderItemGap',
+      valId: 'valItemGap',
+      rowSelector: null,
+      title: '卡片间距调节',
+      iconSvg: '<morph-icon data-icon="rows" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>',
+      min: 4,
+      max: 22,
+      step: 1,
+      format: v => Math.round(v) + 'px',
+      get: () => (state.spacing && typeof state.spacing.gap === 'number') ? state.spacing.gap : 10,
+      set: v => {
+        if (!state.spacing) state.spacing = Object.assign({}, SPACING_PRESETS.standard);
+        state.spacing.gap = v;
+        syncPresetSeg();
+        applySpacing();
+      }
+    },
+    {
+      id: 'sliderItemPad',
+      valId: 'valItemPad',
+      rowSelector: null,
+      title: '卡片内边距调节',
+      iconSvg: '<morph-icon data-icon="frame" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>',
+      min: 6,
+      max: 22,
+      step: 1,
+      format: v => Math.round(v) + 'px',
+      get: () => (state.spacing && typeof state.spacing.pad === 'number') ? state.spacing.pad : 13,
+      set: v => {
+        if (!state.spacing) state.spacing = Object.assign({}, SPACING_PRESETS.standard);
+        state.spacing.pad = v;
+        syncPresetSeg();
+        applySpacing();
+      }
+    },
+    {
+      id: 'sliderItemFont',
+      valId: 'valItemFont',
+      rowSelector: null,
+      title: '标题字号调节',
+      iconSvg: '<morph-icon data-icon="text" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>',
+      min: 12,
+      max: 19,
+      step: 0.5,
+      format: v => (Math.round(v * 10) / 10) + 'px',
+      get: () => (state.spacing && typeof state.spacing.font === 'number') ? state.spacing.font : 15,
+      set: v => {
+        if (!state.spacing) state.spacing = Object.assign({}, SPACING_PRESETS.standard);
+        state.spacing.font = v;
+        syncPresetSeg();
+        applySpacing();
+      }
+    }
+  ];
+
+  function syncVal(cfg, rawVal, doSave = false) {
+    let v = Math.max(cfg.min, Math.min(cfg.max, Math.round((rawVal - cfg.min) / cfg.step) * cfg.step + cfg.min));
+    v = Math.round(v * 10) / 10;
+    const txt = cfg.format(v);
+
+    const valEl = document.getElementById(cfg.valId);
+    if (valEl) valEl.textContent = txt;
+    if (previewVal) previewVal.textContent = txt;
+
+    const origSlider = document.getElementById(cfg.id);
+    if (origSlider && parseFloat(origSlider.value) !== v) origSlider.value = v;
+    if (previewSlider && parseFloat(previewSlider.value) !== v) previewSlider.value = v;
+
+    updateSliderProgress(origSlider);
+    updateSliderProgress(previewSlider);
+
+    cfg.set(v);
+    if (doSave) save();
+  }
+
+  function enterPreview(cfg) {
+    if (isDragging) return;
+    if (closeTimer) {
+      clearTimeout(closeTimer);
+      closeTimer = null;
+    }
+    isDragging = true;
+    activeCfg = cfg;
+    document.documentElement.classList.add('slider-preview-active');
+    triggerHaptic('light');
+
+    const setModal = document.getElementById('setModal');
+    const setMask = document.getElementById('setMask');
+    if (setModal) setModal.classList.add('preview-mode-hidden');
+    if (setMask) setMask.classList.add('preview-mode-hidden');
+
+    const origSlider = document.getElementById(cfg.id);
+    if (origSlider) {
+      const row = (cfg.rowSelector ? document.querySelector(cfg.rowSelector) : null) || origSlider.closest('.slider-row') || origSlider;
+      const rect = row.getBoundingClientRect();
+
+      // 原地吸附于用户手指操作的滑块原始位置，完全跟手，杜绝跳动到屏幕底部
+      const padX = 14;
+      const padY = 8;
+      const w = Math.min(window.innerWidth - 32, Math.max(320, rect.width + padX * 2));
+      const l = Math.max(16, Math.min(window.innerWidth - w - 16, rect.left - padX));
+      const t = Math.max(16, Math.min(window.innerHeight - 110, rect.top - padY));
+
+      previewBar.style.left = l + 'px';
+      previewBar.style.top = t + 'px';
+      previewBar.style.width = w + 'px';
+      previewBar.style.bottom = 'auto';
+      previewBar.style.right = 'auto';
+
+      if (previewIcon) previewIcon.innerHTML = cfg.iconSvg;
+      if (previewTitleText) previewTitleText.textContent = cfg.title;
+
+      previewSlider.min = cfg.min;
+      previewSlider.max = cfg.max;
+      previewSlider.step = cfg.step;
+      previewSlider.setAttribute('aria-label', cfg.title);
+
+      const curVal = cfg.get();
+      syncVal(cfg, curVal, false);
+
+      previewBar.classList.remove('closing');
+      previewBar.hidden = false;
+      // Keep the preview track under the finger, with the complete panel inside the viewport.
+      const barRect = previewBar.getBoundingClientRect();
+      const sliderRect = previewSlider.getBoundingClientRect();
+      const originalRect = origSlider.getBoundingClientRect();
+      const alignedTop = originalRect.top + originalRect.height / 2 - (sliderRect.top + sliderRect.height / 2 - barRect.top);
+      previewBar.style.top = Math.max(16, Math.min(window.innerHeight - barRect.height - 16, alignedTop)) + 'px';
+    }
+  }
+
+  function exitPreview() {
+    if (!isDragging) return;
+    isDragging = false;
+    document.documentElement.classList.remove('slider-preview-active');
+    triggerHaptic('light');
+
+    previewBar.classList.add('closing');
+    closeTimer = setTimeout(() => {
+      if (!isDragging && previewBar) {
+        previewBar.hidden = true;
+        previewBar.classList.remove('closing');
+      }
+      closeTimer = null;
+    }, 180);
+
+    const setModal = document.getElementById('setModal');
+    const setMask = document.getElementById('setMask');
+    if (setModal) setModal.classList.remove('preview-mode-hidden');
+    if (setMask) setMask.classList.remove('preview-mode-hidden');
+
+    save();
+    activeCfg = null;
+  }
+
+  configs.forEach(cfg => {
+    const slider = document.getElementById(cfg.id);
+    if (!slider) return;
+
+    slider.addEventListener('input', e => {
+      if (scrollGesture || (pointerDown && !isDragging && activeCfg === cfg)) {
+        // Keep the value unchanged until the gesture is identified as horizontal.
+        slider.value = cfg.get();
+        updateSliderProgress(slider);
+        return;
+      }
+      if (!isDragging) {
+        syncVal(cfg, parseFloat(e.target.value), false);
+      }
+    });
+    slider.addEventListener('change', () => {
+      // Native range release may write its own value after the preview drag ends.
+      syncVal(cfg, cfg.get(), true);
+    });
+
+    const handleDown = (clientX, clientY) => {
+      pointerDown = true;
+      scrollGesture = false;
+      activeCfg = cfg;
+      startX = clientX;
+      startY = clientY;
+      dragWidth = Math.max(1, slider.getBoundingClientRect().width - 24);
+      isDragging = false;
+    };
+
+    if (window.PointerEvent) {
+      slider.addEventListener('pointerdown', e => handleDown(e.clientX, e.clientY));
+    } else {
+      slider.addEventListener('touchstart', e => {
+        if (e.touches && e.touches[0]) handleDown(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      slider.addEventListener('mousedown', e => handleDown(e.clientX, e.clientY));
+    }
+  });
+
+  const handleGlobalMove = (clientX, clientY, e) => {
+    if (!pointerDown || !activeCfg) return;
+    const dx = clientX - startX;
+    const dy = clientY - startY;
+    if (!isDragging) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
+      if (Math.abs(dy) >= Math.abs(dx)) {
+        // Yield the rest of this gesture to the settings scroll container.
+        pointerDown = false;
+        scrollGesture = true;
+        activeCfg = null;
+        return;
+      }
+      enterPreview(activeCfg);
+      // Continue from the current value without remapping to the animated preview bar.
+      dragValue = activeCfg.get();
+      startX = clientX;
+    }
+    if (isDragging) {
+      if (e && e.cancelable) e.preventDefault();
+      const raw = dragValue + (clientX - startX) / dragWidth * (activeCfg.max - activeCfg.min);
+      syncVal(activeCfg, raw, false);
+    }
+  };
+
+  const handleGlobalUp = (cancelled = false) => {
+    if (isDragging) {
+      exitPreview();
+    } else if (pointerDown && activeCfg && !cancelled) {
+      // A tap still selects a value, without opening the immersive preview.
+      const slider = document.getElementById(activeCfg.id);
+      const x = startX - slider.getBoundingClientRect().left - 12;
+      syncVal(activeCfg, activeCfg.min + x / dragWidth * (activeCfg.max - activeCfg.min), true);
+    }
+    pointerDown = false;
+    scrollGesture = false;
+    isDragging = false;
+    activeCfg = null;
+  };
+
+  if (window.PointerEvent) {
+    window.addEventListener('pointermove', e => { if (pointerDown) handleGlobalMove(e.clientX, e.clientY, e); }, { passive: false });
+    window.addEventListener('pointerup', () => handleGlobalUp());
+    window.addEventListener('pointercancel', () => handleGlobalUp(true));
+  } else {
+    window.addEventListener('touchmove', e => {
+      if (pointerDown && e.touches && e.touches[0]) handleGlobalMove(e.touches[0].clientX, e.touches[0].clientY, e);
+    }, { passive: false });
+    window.addEventListener('touchend', () => handleGlobalUp());
+    window.addEventListener('touchcancel', () => handleGlobalUp(true));
+
+    window.addEventListener('mousemove', e => { if (pointerDown) handleGlobalMove(e.clientX, e.clientY, e); });
+    window.addEventListener('mouseup', () => handleGlobalUp());
+  }
+
+  previewSlider.addEventListener('input', e => {
+    if (activeCfg) {
+      syncVal(activeCfg, parseFloat(e.target.value), false);
+    }
+  });
+  const onPreviewEnd = () => {
+    if (isDragging) exitPreview();
+  };
+  previewSlider.addEventListener('change', onPreviewEnd);
+  previewSlider.addEventListener('pointerup', onPreviewEnd);
+  previewSlider.addEventListener('touchend', onPreviewEnd);
 }
 
 function compressImageFile(file, maxWidth, quality, callback){
@@ -2371,7 +2836,7 @@ function compressImageFile(file, maxWidth, quality, callback){
 }
 
 /* ========== 软件信息 ========== */
-const APP_VERSION='v1.9.9';
+const APP_VERSION='v1.10.0';
 const REPO_URL='https://github.com/PaidaxingTuT/SuperTodo';
 const REPO_API='https://api.github.com/repos/PaidaxingTuT/SuperTodo';
 let devClickCount=0, devClickTimer=null;
@@ -2394,16 +2859,17 @@ function handleVerClick(){
     save();
     updateInfoVerText();
     alertDlg('开发者模式', state.devMode?'已启用开发者模式':'已退出开发者模式');
-    if($('#clModal')&&!$('#clModal').hidden) loadChangelog(true);
+    if($('#clModal')&&UiMotion.isOpen($('#clModal'))) loadChangelog(true);
   }
 }
 function openInfo(){
   pushLayer();
   updateInfoVerText();
-  $('#infoMask').hidden=false;
-  $('#infoModal').hidden=false;
+  renderInterfaceStyleSeg();
+  UiMotion.show($('#infoMask'));
+  UiMotion.show($('#infoModal'));
 }
-function closeInfo(){ $('#infoMask').hidden=true; $('#infoModal').hidden=true; if(!backSuppress)syncBack(); }
+function closeInfo(){ UiMotion.hide($('#infoMask')); UiMotion.hide($('#infoModal')); if(!backSuppress)syncBack(); }
 
 /* ========== 更新日志 ========== */
 let changelogRawMd=null;
@@ -2429,6 +2895,10 @@ function renderChangelog(md){
   for(let line of lines){
     line=line.trim();
     if(!line || line.startsWith('# ')) continue;
+    if(/^(?:[-*_]\s*){3,}$/.test(line)){
+      if(inList){ html+='</ul>'; inList=false; }
+      continue;
+    }
 
     const verMatch=line.match(/^##\s+(v[^\s（(]+)(?:[（(]([^）)]+)[）)])?/);
     if(verMatch){
@@ -2518,13 +2988,13 @@ async function loadChangelog(forceRefresh){
 
 function openChangelog(){
   pushLayer();
-  $('#clMask').hidden=false;
-  $('#clModal').hidden=false;
+  UiMotion.show($('#clMask'));
+  UiMotion.show($('#clModal'));
   loadChangelog(true);
 }
 function closeChangelog(){
-  $('#clMask').hidden=true;
-  $('#clModal').hidden=true;
+  UiMotion.hide($('#clMask'));
+  UiMotion.hide($('#clModal'));
   if(!backSuppress) syncBack();
 }
 function parseVerNums(v){
@@ -2682,8 +3152,8 @@ function showUpdateModal(rel){
 
   setUpdateStage('info');
   pushLayer();
-  $('#updateMask').hidden=false;
-  $('#updateModal').hidden=false;
+  UiMotion.show($('#updateMask'));
+  UiMotion.show($('#updateModal'));
 }
 
 function closeUpdateModal(){
@@ -2691,8 +3161,8 @@ function closeUpdateModal(){
     clearInterval(currentUpdateProgressTimer);
     currentUpdateProgressTimer=null;
   }
-  $('#updateMask').hidden=true;
-  $('#updateModal').hidden=true;
+  UiMotion.hide($('#updateMask'));
+  UiMotion.hide($('#updateModal'));
   setUpdateStage('info');
   if(!backSuppress) syncBack();
 }
@@ -3001,16 +3471,78 @@ function downloadFile(url,name){
 /* ========== 设置：配色 ========== */
 function renderPalette(){
   const el=$('#palette');
-  el.innerHTML=PALETTE.map(c=>`<button class="pal-sw ${state.theme.toLowerCase()===c?'on':''}" style="background:${c}" data-c="${c}"></button>`).join('');
+  el.innerHTML=PALETTE.map(c=>`<button class="pal-sw ${state.theme.toLowerCase()===c?'on':''}" style="background:${c}" data-c="${c}" aria-label="主色 ${c}" aria-pressed="${state.theme.toLowerCase()===c}"></button>`).join('');
   $('#customColor').value=state.theme;
 }
 function setTheme(hex){
   state.theme=hex; applyTheme(hex); save(); renderPalette();
 }
 
+/* 应用内配色面板：确认前只预览，不修改设置。 */
+let colorPickerTarget='theme', colorPickerHex='#0b57d0';
+function hslToHex(h,s,l){
+  s/=100;l/=100;
+  const a=s*Math.min(l,1-l);
+  const channel=n=>{
+    const k=(n+h/30)%12;
+    return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))).toString(16).padStart(2,'0');
+  };
+  return '#'+channel(0)+channel(8)+channel(4);
+}
+function updateColorPicker(hex, syncSliders=true){
+  colorPickerHex=hex.toLowerCase();
+  $('#colorHex').value=colorPickerHex.toUpperCase();
+  $('#colorHex').setCustomValidity('');
+  $('#colorApply').disabled=false;
+  $('#colorPreview').style.background=colorPickerHex;
+  if(syncSliders){
+    const hsl=hexToHsl(colorPickerHex);
+    ['colorHue','colorSaturation','colorLightness'].forEach((id,i)=>$('#'+id).value=hsl[i]);
+  }
+  const h=+$('#colorHue').value,s=+$('#colorSaturation').value,l=+$('#colorLightness').value;
+  $('#colorHueValue').textContent=h+'°';
+  $('#colorSaturationValue').textContent=s+'%';
+  $('#colorLightnessValue').textContent=l+'%';
+  $('#colorSaturation').style.setProperty('--color-track',`linear-gradient(to right,${hslToCss(h,0,l)},${hslToCss(h,100,l)})`);
+  $('#colorLightness').style.setProperty('--color-track',`linear-gradient(to right,#000,${hslToCss(h,s,50)},#fff)`);
+  $$('#colorPresets .pal-sw').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.c===colorPickerHex)));
+}
+function openColorPicker(target){
+  colorPickerTarget=target;
+  $('#colorTitle').textContent=target==='theme'?'选择主色':'选择背景颜色';
+  $('#colorPresets').innerHTML=PALETTE.map(c=>`<button class="pal-sw" style="background:${c}" data-c="${c}" aria-label="颜色 ${c}"></button>`).join('');
+  updateColorPicker(target==='theme'?state.theme:state.customBg?.color||'#f2f5fb');
+  pushLayer();UiMotion.show($('#colorMask'));UiMotion.show($('#colorModal'));
+}
+function closeColorPicker(){
+  UiMotion.hide($('#colorMask'));UiMotion.hide($('#colorModal'));
+  if(!backSuppress)syncBack();
+  $(colorPickerTarget==='theme'?'#customColorBtn':'#customBgColorBtn').focus();
+}
+function setupColorPicker(){
+  $('#colorClose').addEventListener('click',closeColorPicker);
+  $('#colorCancel').addEventListener('click',closeColorPicker);
+  $('#colorMask').addEventListener('click',closeColorPicker);
+  $('#colorPresets').addEventListener('click',e=>{const sw=e.target.closest('[data-c]');if(sw)updateColorPicker(sw.dataset.c);});
+  ['colorHue','colorSaturation','colorLightness'].forEach(id=>$('#'+id).addEventListener('input',()=>{
+    updateColorPicker(hslToHex(+$('#colorHue').value,+$('#colorSaturation').value,+$('#colorLightness').value),false);
+  }));
+  $('#colorHex').addEventListener('input',e=>{
+    let hex=e.target.value.trim();if(!hex.startsWith('#'))hex='#'+hex;
+    if(/^#[0-9a-f]{6}$/i.test(hex))updateColorPicker(hex);
+    else {e.target.setCustomValidity('请输入六位 HEX 色值，例如 #0B57D0');$('#colorApply').disabled=true;}
+  });
+  $('#colorApply').addEventListener('click',()=>{
+    if(!$('#colorHex').reportValidity())return;
+    const input=$(colorPickerTarget==='theme'?'#customColor':'#customBgColor');
+    input.value=colorPickerHex;input.dispatchEvent(new Event('input',{bubbles:true}));
+    renderCustomBgSettings();closeColorPicker();
+  });
+}
+
 /* ========== 设置：自定义标签 ========== */
 function renderSetGroups(){
-  const g=(id,arr,kind)=>{ const el=$(id); el.innerHTML=arr.map((v,i)=>`<span class="tag-chip" data-ren="${kind}:${i}">${esc(v)}<span class="x" data-del="${kind}:${i}">✕</span></span>`).join('')+`<button class="add-chip" data-add="${kind}">＋ 添加</button>`; };
+  const g=(id,arr,kind)=>{ const el=$(id); el.innerHTML=arr.map((v,i)=>`<span class="tag-chip" data-ren="${kind}:${i}"><button type="button" class="tag-chip-name" aria-label="重命名${esc(v)}">${esc(v)}</button><button type="button" class="x" data-del="${kind}:${i}" aria-label="删除${esc(v)}"><morph-icon data-icon="close" aria-hidden="true"></morph-icon></button></span>`).join('')+`<button class="add-chip" data-add="${kind}">＋ 添加</button>`; };
   g('#setTypes',state.types,'type'); g('#setScenes',state.scenes,'scene'); g('#setTimes',state.times,'time');
 }
 function addTag(kind){
@@ -3079,40 +3611,192 @@ function renameTag(kind,idx){
 /* ========== AI：一句话速记 + 智能整理（云端） ========== */
 /* ===== 云端解析（OpenAI 兼容） ===== */
 function hasCloudKey(){ return !!(state.ai&&state.ai.enabled&&state.ai.base&&state.ai.key) }
+
+/* 连接预热（DNS 预解析与 TCP/TLS 提前握手，节省首包网络建连开销） */
+function preconnectAi(){
+  if(!hasCloudKey()) return;
+  try{
+    const origin = new URL(state.ai.base).origin;
+    if(!document.querySelector(`link[data-ai-origin="${origin}"]`)){
+      const l1=document.createElement('link');
+      l1.rel='dns-prefetch'; l1.href=origin; l1.dataset.aiOrigin=origin;
+      document.head.appendChild(l1);
+      const l2=document.createElement('link');
+      l2.rel='preconnect'; l2.href=origin; l2.crossOrigin='anonymous'; l2.dataset.aiOrigin=origin;
+      document.head.appendChild(l2);
+    }
+  }catch(e){}
+}
+
+/* 高密度精简 Prompt，剔除冗余修饰与重复说明，加速模型 Prefill 计算 */
 function aiPrompt(){
   const now=new Date();
   const today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  return '你是清单应用的语义解析器。必须完整分析用户输入中的每个信息，只输出 JSON，不要解释。'+
-  '当前日期是 '+today+'（用户本地日期），所有相对时间都以此计算。'+
-  '现有类型：'+JSON.stringify(state.types)+'，现有场景：'+JSON.stringify(state.scenes)+'，现有时间：'+JSON.stringify(state.times)+'。'+
-  '输出格式：{"title":"简短事项主体","type":"类型或空","scene":"场景或空","time":"时间或空","cost":数字(元)或null,"due":"YYYY-MM-DD或空","star":1-5或0,"suggest":{"type":"建议新建类型或空","scene":"建议新建场景或空","time":"建议新建时间或空"}}。'+
-  '规则：1. title 只保留核心对象或任务，去掉时间、金额、地点、重要程度和“买/购买”等可由 type 表达的修饰；不要照抄整句。'+
-  '2. 根据语义推断所有字段，例如“买/购入”对应购物类型；不得漏掉可以明确推断的信息。'+
-  '3. 识别今天、明天、周末、月底、年底前、明年等相对时间并换算 due；“年底前/今年底/今年内”表示今年且 due 为当年 12-31。'+
-  '4. type/scene/time 必须从现有列表精确选择；没有合适项时该字段留空，并在 suggest 中给出简短建议。'+
-  '5. cost 只提取明确金额；star 按明确的重要程度映射到 1-5，未提及则为 0；不要臆造信息。'+
-  '示例：输入“年底前买ps5”，若现有列表包含购物和今年，则 title="ps5"、type="购物"、time="今年"、due="'+now.getFullYear()+'-12-31"，其他未提及字段保持空或 null。';
+  return `待办清单语义解析器。必须只输出纯JSON对象，不带解释说明。基准日期：${today}。
+可选类型：${JSON.stringify(state.types)}；可选场景：${JSON.stringify(state.scenes)}；可选时间：${JSON.stringify(state.times)}。
+JSON格式：{"title":"简短核心事项","type":"精确匹配项或空","scene":"精确匹配项或空","time":"精确匹配项或空","cost":数字或null,"due":"YYYY-MM-DD或空","star":0,"suggest":{"type":"","scene":"","time":""}}
+规则：
+1.title仅保留核心对象/事件，去掉时间、金额、地点、重要度及“买/购买”等动词，不照抄整句。
+2.type/scene/time优先从可选列表中精确匹配；无匹配项时对应字段留空，并在suggest对应字段简写建议。
+3.相对时间(今天/明天/周末/月底/年底前/明年等)推算为due具体日期(如年底前算为${now.getFullYear()}-12-31)；cost提取纯金额数字(元)；star重要度映射1-5(默认0)。无明确信息字段填null或""。`;
 }
+
+/* 快速安全提取 JSON（免疫模型 Markdown 代码块包裹或杂质字符） */
+function extractJson(raw){
+  if(!raw) return null;
+  const str = String(raw).trim();
+  try{ return JSON.parse(str); }catch(e){}
+  const uncode = str.replace(/```(?:json)?\s*([\s\S]*?)\s*```/gi, '$1').trim();
+  try{ return JSON.parse(uncode); }catch(e){}
+  const start = uncode.indexOf('{');
+  const end = uncode.lastIndexOf('}');
+  if(start !== -1 && end > start){
+    try{ return JSON.parse(uncode.slice(start, end + 1)); }catch(e){}
+  }
+  return null;
+}
+
+/* 内存快速缓存，相同输入即刻命中（0ms 响应） */
+const aiSpeedCache = new Map();
+function getCachedAi(text){
+  const today = new Date().toDateString();
+  const key = `${today}|${state.types.join(',')}|${state.scenes.join(',')}|${state.times.join(',')}|${text}`;
+  return aiSpeedCache.get(key) || null;
+}
+function setCachedAi(text, obj){
+  const today = new Date().toDateString();
+  const key = `${today}|${state.types.join(',')}|${state.scenes.join(',')}|${state.times.join(',')}|${text}`;
+  if(aiSpeedCache.size >= 60) aiSpeedCache.clear();
+  aiSpeedCache.set(key, obj);
+}
+
 async function parseWithCloud(text,signal){
   try{
-    const base=state.ai.base.replace(/\/+$/,'');
-    const res=await fetch(base+'/chat/completions',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+state.ai.key},
+    const cached = getCachedAi(text);
+    if(cached) return cached;
+
+    const base = state.ai.base.replace(/\/+$/,'');
+    const model = state.ai.model || 'gpt-4o-mini';
+    const prompt = aiPrompt();
+
+    // 1. 优先尝试流式解析（SSE）：规避反向代理/API网关的全包缓冲等待，首字即传，显著降低端到端耗时
+    try {
+      const streamRes = await fetch(base + '/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + state.ai.key
+        },
+        signal,
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
+          temperature: 0,
+          max_tokens: 300,
+          stream: true
+        })
+      });
+
+      if (streamRes.ok && streamRes.body) {
+        const reader = streamRes.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        let fullContent = '';
+        let isDone = false;
+
+        while (!isDone) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+            if (trimmed === 'data: [DONE]') {
+              isDone = true;
+              break;
+            }
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const chunk = JSON.parse(trimmed.slice(6));
+                const delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta && chunk.choices[0].delta.content;
+                if (delta) fullContent += delta;
+              } catch (e) {}
+            }
+          }
+        }
+
+        const parsedStream = extractJson(fullContent);
+        if (parsedStream && typeof parsedStream === 'object') {
+          setCachedAi(text, parsedStream);
+          return parsedStream;
+        }
+      }
+    } catch (streamErr) {
+      if (signal && signal.aborted) return null;
+      // 若流式请求遭遇特殊代理不支持，平滑回退至非流式请求
+    }
+
+    // 2. 回退机制：标准非流式请求（兼顾不支持流式或 response_format 的各类兼容网关）
+    const res = await fetch(base + '/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + state.ai.key
+      },
       signal,
-      body:JSON.stringify({
-        model:state.ai.model||'gpt-4o-mini',
-        messages:[{role:'system',content:aiPrompt()},{role:'user',content:text}],
-        temperature:0,
-        response_format:{type:'json_object'}
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
+        temperature: 0,
+        max_tokens: 300,
+        response_format: { type: 'json_object' }
       })
     });
-    if(!res.ok) return null;
-    const data=await res.json();
-    const raw=data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content;
-    if(!raw) return null;
-    return JSON.parse(raw);
-  }catch(e){ return null }
+
+    if (!res.ok) {
+      // 容错重试：某些轻量模型可能对 response_format 报 400，去掉后单次重试
+      if (res.status === 400) {
+        const retryRes = await fetch(base + '/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + state.ai.key
+          },
+          signal,
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'system', content: prompt }, { role: 'user', content: text }],
+            temperature: 0,
+            max_tokens: 300
+          })
+        });
+        if (retryRes.ok) {
+          const data = await retryRes.json();
+          const raw = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+          const parsed = extractJson(raw);
+          if (parsed && typeof parsed === 'object') {
+            setCachedAi(text, parsed);
+            return parsed;
+          }
+        }
+      }
+      return null;
+    }
+
+    const data = await res.json();
+    const raw = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    const parsed = extractJson(raw);
+    if (parsed && typeof parsed === 'object') {
+      setCachedAi(text, parsed);
+      return parsed;
+    }
+    return null;
+  } catch(e) {
+    return null;
+  }
 }
 function normTag(v,dim){ if(!v)return {v:'',s:''}; const list=dim==='types'?state.types:dim==='scenes'?state.scenes:state.times; if(list.includes(v))return {v,s:''}; return {v:'',s:v}; }
 function normalizeCloud(r){
@@ -3139,13 +3823,14 @@ function addTagSilent(kind,name){
 let aiRequestId=0, aiAbort=null;
 function openAi(){
   triggerHaptic('light');
+  preconnectAi();
   aiRequestId++;
   if(aiAbort)aiAbort.abort();
   aiAbort=null;
   pushLayer();
   $('#aiInput').value=''; $('#aiLoading').hidden=true; $('#aiGo').disabled=false;
   $('#aiStatus').textContent = 'AI 增强已开启'+(state.ai.model?(' · '+state.ai.model):'');
-  $('#aiMask').hidden=false; $('#aiModal').hidden=false; $('#aiInput').focus();
+  UiMotion.show($('#aiMask')); UiMotion.show($('#aiModal')); $('#aiInput').focus();
 }
 function closeAi(cancelRequest=true){
   if(cancelRequest){
@@ -3153,7 +3838,7 @@ function closeAi(cancelRequest=true){
     if(aiAbort)aiAbort.abort();
     aiAbort=null;
   }
-  $('#aiMask').hidden=true; $('#aiModal').hidden=true;
+  UiMotion.hide($('#aiMask')); UiMotion.hide($('#aiModal'));
   if(!backSuppress)syncBack();
 }
 async function runAi(){
@@ -3164,6 +3849,17 @@ async function runAi(){
   const controller=new AbortController();
   aiAbort=controller;
   $('#aiGo').disabled=true; $('#aiLoading').hidden=false; $('#aiStatus').textContent='正在解析…';
+
+  // 并行预渲染新建事项的分段标签与骨架，降低网络返回后渲染与主线程阻塞开销
+  setTimeout(()=>{
+    if(requestId===aiRequestId && UiMotion.isOpen($('#aiModal'))){
+      const tSeg=$('#fTypeSeg'), sSeg=$('#fSceneSeg'), mSeg=$('#fTimeSeg');
+      if(tSeg && !tSeg.children.length) tSeg.innerHTML=segHTML('type');
+      if(sSeg && !sSeg.children.length) sSeg.innerHTML=segHTML('scene');
+      if(mSeg && !mSeg.children.length) mSeg.innerHTML=segHTML('time');
+    }
+  }, 10);
+
   const r=await parseAI(text,controller.signal);
   if(requestId!==aiRequestId||controller.signal.aborted||$('#aiModal').hidden)return;
   aiAbort=null;
@@ -3178,7 +3874,7 @@ async function openTidy(){
   if(!hasCloudKey()){ alertDlg('智能整理','需要先开启 AI 增强（设置 → AI · 云端增强）'); return }
   const cands=state.items.filter(it=>!it.done&&(!it.scene||!it.time));
   if(!cands.length){ alertDlg('智能整理','没有需要整理的事项'); return }
-  $('#tidyMask').hidden=false; $('#tidyModal').hidden=false;
+  UiMotion.show($('#tidyMask')); UiMotion.show($('#tidyModal'));
   pushLayer();
   $('#tidyLoading').hidden=false; $('#tidyList').innerHTML='';
   const rows=[];
@@ -3222,7 +3918,7 @@ function tidyApply(){
   closeTidy();
   alertDlg('智能整理', n?('已整理 '+n+' 处标签'):'未做更改');
 }
-function closeTidy(){ $('#tidyMask').hidden=true; $('#tidyModal').hidden=true; if(!backSuppress)syncBack(); }
+function closeTidy(){ UiMotion.hide($('#tidyMask')); UiMotion.hide($('#tidyModal')); if(!backSuppress)syncBack(); }
 /* ===== AI 云端配置 ===== */
 function renderAiCfg(){
   if(!state.ai)state.ai={enabled:false,base:'',key:'',model:''};
@@ -3303,16 +3999,16 @@ function getQuadrantWidgetData(){
 
 function openQuadrantModal(){
   pushLayer();
-  $('#drawerMask').hidden=true; $('#drawer').hidden=true;
-  $('#setMask').hidden=true; $('#setModal').hidden=true;
+  UiMotion.hide($('#drawerMask')); UiMotion.hide($('#drawer'));
+  UiMotion.hide($('#setMask')); UiMotion.hide($('#setModal'));
   renderQuadrantModal();
-  $('#quadrantMask').hidden=false;
-  $('#quadrantModal').hidden=false;
+  UiMotion.show($('#quadrantMask'));
+  UiMotion.show($('#quadrantModal'));
 }
 
 function closeQuadrantModal(){
-  $('#quadrantMask').hidden=true;
-  $('#quadrantModal').hidden=true;
+  UiMotion.hide($('#quadrantMask'));
+  UiMotion.hide($('#quadrantModal'));
   if(!backSuppress) syncBack();
 }
 
@@ -3404,7 +4100,7 @@ function renderQuadrantEditors(){
         <div class="qe-row">
           <span class="card-check ${it.done?'done':''}" data-qtoggle="${k}:${idx}"></span>
           <span class="qe-row-title ${it.done?'done':''}" data-qtoggle="${k}:${idx}">${esc(it.title)}</span>
-          <button class="qe-row-del" data-qdel="${k}:${idx}" title="移除">✕</button>
+          <button class="qe-row-del" data-qdel="${k}:${idx}" title="移除"><morph-icon data-icon="close" aria-hidden="true"></morph-icon></button>
         </div>
       `).join('');
     }
@@ -3496,6 +4192,8 @@ function toggleQuadrantItemDone(qKey, idx){
         localIt.doneScenes = [];
         localIt.doneTypes = [];
       }
+      syncSubtasksDone(localIt);
+      createRepeatItem(state.items, localIt);
     }
 
     // 同步其他象限中包含的同 ID 事项状态
@@ -3519,6 +4217,7 @@ function toggleQuadrantItemDone(qKey, idx){
     save();
     render();
     renderQuadrantModal();
+    $$('[data-qtoggle].card-check').filter(el=>el.dataset.qtoggle===`${qKey}:${idx}`).forEach(el=>UiMotion.check(el,newDone));
   }
 }
 
@@ -3543,13 +4242,13 @@ function openItemPickerFor(qKey){
   $('#pickerSearch').value = '';
   renderPickerList('');
   pushLayer();
-  $('#itemPickerMask').hidden = false;
-  $('#itemPickerModal').hidden = false;
+  UiMotion.show($('#itemPickerMask'));
+  UiMotion.show($('#itemPickerModal'));
 }
 
 function closeItemPicker(){
-  $('#itemPickerMask').hidden = true;
-  $('#itemPickerModal').hidden = true;
+  UiMotion.hide($('#itemPickerMask'));
+  UiMotion.hide($('#itemPickerModal'));
   currentPickerQKey = null;
   if(!backSuppress) syncBack();
 }
@@ -3599,7 +4298,8 @@ function initSwipeGestures(){
 
   // 阻止浏览器原生的文本/图片拖拽干扰手势
   content.addEventListener('dragstart', e => {
-    if(!e.target.closest('.drag-handle')) e.preventDefault();
+    // Sortable dispatches native dragstart on the chosen row, not its handle.
+    if(!e.target.closest('.item-row.sortable-chosen')) e.preventDefault();
   });
 
   let activeRow = null;
@@ -3667,7 +4367,7 @@ function initSwipeGestures(){
     if(e.button !== undefined && e.button !== 0) return;
     // 单指针互斥：当已有手指在操作时，忽略任何后续触点，彻底杜绝多指冲突与卡死
     if(isPointerDown) return;
-    if(e.target.closest('.drag-handle, .card-check, [data-done]')) return;
+    if(e.target.closest('.drag-handle, .card-check, [data-done], .subtask-list')) return;
     const row = e.target.closest('.item-row, .sec-item');
     if(!row) return;
     const front = row.querySelector('.swipe-front');
@@ -3874,6 +4574,9 @@ function initSortable(){
     filter: '.cost-summary-card, .done-section, .done-section-title, .empty',
     preventOnFilter: false,
     handle: '.drag-handle',
+    forceFallback: true,
+    fallbackOnBody: true,
+    fallbackTolerance: 3,
     animation: 150,
     easing: 'cubic-bezier(.2,.7,.2,1)',
     ghostClass: 'sortable-ghost',
@@ -3921,11 +4624,11 @@ function initDrawerSortable(){
   drawerSortable=new Sortable(nav,{
     draggable:'.dnav-item[data-kind="type"]',
     handle:'.dnav-drag',
+    forceFallback:true,
+    fallbackOnBody:true,
+    fallbackTolerance:3,
     filter:'.dnav-all, .dnav-add, .dnav-trash, .dnav-divider',
     animation:160,
-    delay:150,
-    delayOnTouchOnly:true,
-    touchStartThreshold:4,
     ghostClass:'sortable-ghost',
     onChoose(evt){
       destroyTimer();
@@ -3968,6 +4671,7 @@ function exportData(){
     times: state.times,
     theme: state.theme,
     colorMode: state.colorMode,
+    interfaceStyle: state.interfaceStyle,
     spacing: state.spacing,
     devMode: state.devMode,
     autoCheckUpdate: state.autoCheckUpdate,
@@ -4039,6 +4743,7 @@ function applyImportedData(d){
   if(Array.isArray(d.trash))state.trash=d.trash;
   if(d.theme)state.theme=d.theme;
   if(['system','light','dark'].includes(d.colorMode))state.colorMode=d.colorMode;
+  state.interfaceStyle=['classic','md3'].includes(d.interfaceStyle)?d.interfaceStyle:'classic';
   if(d.spacing&&typeof d.spacing==='object')state.spacing=Object.assign({preset:'standard',gap:10,pad:13,font:15},d.spacing);
   else if(d.listDensity==='compact')state.spacing={preset:'compact',gap:6,pad:8,font:13.5};
   else state.spacing={preset:'standard',gap:10,pad:13,font:15};
@@ -4060,7 +4765,7 @@ function applyImportedData(d){
   else if(!state.customBg)state.customBg={type:'default',color:'#f2f5fb',image:'',opacity:80};
   state.widget2x2Background=normalizeWidget2x2Background(d.widget2x2Background);
   save();
-  applyColorMode();
+  applyInterfaceStyle();
   applyCustomBg();
   applySpacing();
   render();
@@ -4149,6 +4854,19 @@ document.addEventListener('DOMContentLoaded',()=>{
   $('#modalCancel').addEventListener('click',hideModal);
   $('#modalMask').addEventListener('click',hideModal);
   $('#modalSave').addEventListener('click',saveForm);
+  $('#addSubtask').addEventListener('click',()=>{
+    appendSubtaskEditor();
+    $('#fSubtasks .subtask-edit:last-child input[type="text"]').focus();
+  });
+  $('#fSubtasks').addEventListener('click',e=>{
+    if(e.target.closest('[data-remove-subtask]')) e.target.closest('.subtask-edit').remove();
+  });
+  $('#fSubtasks').addEventListener('keydown',e=>{
+    if(e.key==='Enter' && e.target.matches('input[type="text"]')){
+      e.preventDefault();
+      $('#addSubtask').click();
+    }
+  });
   $('#modalDelete').addEventListener('click',()=>{ if(!editId)return; moveToTrash(editId); hideModal(); });
   $('#modal').addEventListener('click',e=>{
     const add=e.target.closest('.seg-chip.mini');
@@ -4179,15 +4897,19 @@ document.addEventListener('DOMContentLoaded',()=>{
   $('#sortAsc').addEventListener('change',e=>{ state.sortAsc=e.target.checked; save(); render(); });
 
   $('#setClose').addEventListener('click',closeSettings);
+  $('#setBack').addEventListener('click',backSettingsPage);
   $('#setMask').addEventListener('click',closeSettings);
   $('#setModal').addEventListener('click',e=>{
+    const entry=e.target.closest('[data-settings-page]');
+    if(entry){pushLayer();showSettingsPage(entry.dataset.settingsPage);$('#setBack').focus();return;}
     const x=e.target.closest('.x'); const ad=e.target.closest('.add-chip'); const ren=e.target.closest('.tag-chip[data-ren]');
     if(x){ e.stopPropagation(); const [kind,idx]=x.dataset.del.split(':'); deleteTag(kind,+idx); return }
     if(ren){ e.stopPropagation(); const [kind,idx]=ren.dataset.ren.split(':'); renameTag(kind,+idx); return }
     if(ad){ e.stopPropagation(); addTag(ad.dataset.add); return }
   });
   $('#palette').addEventListener('click',e=>{ const sw=e.target.closest('.pal-sw'); if(sw)setTheme(sw.dataset.c); });
-  $('#customColorBtn').addEventListener('click',()=>$('#customColor').click());
+  setupColorPicker();
+  $('#customColorBtn').addEventListener('click',()=>openColorPicker('theme'));
   $('#customColor').addEventListener('input',e=>{ if(e.target.value)setTheme(e.target.value); });
 
   /* 上下文菜单 */
@@ -4296,14 +5018,12 @@ document.addEventListener('DOMContentLoaded',()=>{
   $('#dlgOk').addEventListener('click',()=>{
     const cb=dlgCb;
     const val=dlgType==='input'?$('#dlgInput').value.trim():null;
-    const hasCb=dlgType==='confirm'||dlgType==='input';
     dlgClose();
-    if(hasCb&&cb) cb(val);
+    if(cb) cb(val);
   });
   $('#dlgCancel').addEventListener('click',()=>{ const c=dlgOnCancel; dlgClose(); if(c)c(); });
   $('#dlgMask').addEventListener('click',()=>{ const c=dlgOnCancel; dlgClose(); if(c)c(); });
 
-  $('#tidyBtn').addEventListener('click',()=>{ closeSettings(); openTidy(); });
   $('#exportBtn').addEventListener('click',exportData);
   $('#importBtn').addEventListener('click',()=>$('#importFile').click());
   $('#importFile').addEventListener('change',importData);

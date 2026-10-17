@@ -2,17 +2,18 @@
 <html lang="zh-Hans">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0b57d0">
 <meta name="color-scheme" content="light dark">
-<link rel="icon" href="app-icon.png" media="(prefers-color-scheme: light)">
-<link rel="icon" href="app-icon-dark.png" media="(prefers-color-scheme: dark)">
-<link rel="apple-touch-icon" href="app-icon.png" media="(prefers-color-scheme: light)">
-<link rel="apple-touch-icon" href="app-icon-dark.png" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="web/assets/icons/app-icon.png" media="(prefers-color-scheme: light)">
+<link rel="icon" href="web/assets/icons/app-icon-dark.png" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="web/assets/icons/app-icon.png" media="(prefers-color-scheme: light)">
+<link rel="apple-touch-icon" href="web/assets/icons/app-icon-dark.png" media="(prefers-color-scheme: dark)">
 <title>超级清单 · SuperTodo</title>
 <script>
 try{
-  const d=JSON.parse(localStorage.getItem('listapp.data.v2'));
+  const demo=new URLSearchParams(window.location.search).get('demo')==='1';
+  const d=JSON.parse(localStorage.getItem(demo?'listapp.demo.v2':'listapp.data.v2'));
   const m=d&&d.colorMode;
   let sysDark = matchMedia('(prefers-color-scheme: dark)').matches;
   if(window.AndroidWidgetBridge&&window.AndroidWidgetBridge.isSystemNightMode){
@@ -35,16 +36,18 @@ try{
   }
   function hslToCss(h,s,l){return 'hsl('+h+','+s+'%,'+l+'%)'}
   var hsl=hexToHsl(hex);
-  var soft=dark?hslToCss(hsl[0],Math.min(55,hsl[1]),26):hslToCss(hsl[0],Math.min(92,hsl[1]+5),Math.max(87,Math.min(94,92+(hsl[2]-55)*0.4)));
-  var faint=dark?hslToCss(hsl[0],Math.min(35,hsl[1]),18):hslToCss(hsl[0],Math.min(42,hsl[1]),Math.max(95,Math.min(97,95)));
-  var deep=hslToCss(hsl[0],Math.min(96,hsl[1]),Math.max(22,Math.round(hsl[2]*0.86)));
-  var ink=dark?hslToCss(hsl[0],Math.min(92,hsl[1]+5),72):hex;
-  root.style.setProperty('--primary',hex);
+  var saturation=Math.min(68,hsl[1]);
+  var soft=hslToCss(hsl[0],Math.min(42,hsl[1]),dark?28:90);
+  var faint=hslToCss(hsl[0],Math.min(22,hsl[1]),dark?18:95);
+  var deep=hslToCss(hsl[0],saturation,dark?72:30);
+  var ink=hslToCss(hsl[0],saturation,dark?80:28);
+  root.style.setProperty('--theme-hue',hsl[0]);
+  root.style.setProperty('--primary',ink);
   root.style.setProperty('--primary-ink',ink);
   root.style.setProperty('--primary-soft',soft);
   root.style.setProperty('--primary-faint',faint);
   root.style.setProperty('--primary-deep',deep);
-  root.style.setProperty('--on-primary','#fff');
+  root.style.setProperty('--on-primary',dark?hslToCss(hsl[0],saturation,20):'#fff');
   var metaTheme=document.querySelector('meta[name=theme-color]');
   if(metaTheme)metaTheme.setAttribute('content',dark?'#111318':hex);
   if(d&&d.customBg){
@@ -59,7 +62,18 @@ try{
   }
 }catch(e){}
 </script>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="web/vendor/air-datepicker/air-datepicker.css">
+<link rel="stylesheet" href="web/styles/style.css?v=subtask-shared-type">
+<link rel="stylesheet" id="interfaceStyleSheet" data-md3-href="web/styles/md3.css?v=subtask-shared-type">
+<script>
+try{
+  const demo=new URLSearchParams(location.search).get('demo')==='1';
+  const saved=JSON.parse(localStorage.getItem(demo?'listapp.demo.v2':'listapp.data.v2'));
+  const style=saved&&['classic','md3'].includes(saved.interfaceStyle)?saved.interfaceStyle:(saved&&!demo?'classic':'md3');
+  document.documentElement.dataset.interfaceStyle=style;
+  if(style==='md3')document.getElementById('interfaceStyleSheet').href=document.getElementById('interfaceStyleSheet').dataset.md3Href;
+}catch(e){document.documentElement.dataset.interfaceStyle='md3';document.getElementById('interfaceStyleSheet').href=document.getElementById('interfaceStyleSheet').dataset.md3Href;}
+</script>
 </head>
 <body>
 <div id="appBgLayer" class="app-bg-layer"></div>
@@ -136,6 +150,13 @@ try{
     </label>
 
     <div class="fld">
+      <label class="fld-label">子任务清单（可选）</label>
+      <div id="fSubtasks"></div>
+      <button type="button" class="btn-text" id="addSubtask">＋ 添加子任务</button>
+      <div class="ai-tip">全部子任务勾选后，主事项自动完成；取消任一子任务勾选，主事项恢复未完成。</div>
+    </div>
+
+    <div class="fld">
       <label class="fld-label">类型</label>
       <div class="segbg" id="fTypeSeg"></div>
     </div>
@@ -154,9 +175,19 @@ try{
         <input type="number" id="fCost" placeholder="0" min="0" step="any" inputmode="decimal">
       </div>
       <div class="fld-in">
-        <label class="fld-label">截止日期</label>
-        <input type="date" id="fDue">
+        <label class="fld-label" for="fDueDisplay">截止日期</label>
+        <div class="due-field">
+          <input type="hidden" id="fDue">
+          <input type="text" id="fDueDisplay" placeholder="选择日期" autocomplete="off" readonly aria-haspopup="dialog" aria-expanded="false">
+          <morph-icon data-icon="calendar" aria-hidden="true"></morph-icon>
+        </div>
       </div>
+    </div>
+
+    <div class="fld">
+      <label class="fld-label" for="fRepeatDays">每 X 天重复（可选）</label>
+      <input type="number" id="fRepeatDays" placeholder="不重复" min="1" max="36500" step="1" inputmode="numeric" aria-describedby="repeatHint">
+      <div class="ai-tip" id="repeatHint">留空则不重复。完成后按截止日期顺延；未设日期则从完成当天计算，逾期跳到下个周期。</div>
     </div>
 
     <div class="fld">
@@ -236,10 +267,32 @@ try{
 <!-- ===== 设置弹窗 ===== -->
 <div class="modal-mask" id="setMask" hidden></div>
 <div class="modal" id="setModal" hidden>
-  <div class="modal-head"><h2>设置</h2><button class="md-close" id="setClose" aria-label="关闭"></button></div>
+  <div class="modal-head"><md-filled-tonal-icon-button class="settings-icon-button" id="setBack" type="button" aria-label="返回设置" hidden><md-icon>arrow_back</md-icon></md-filled-tonal-icon-button><h2 id="setTitle">设置</h2><md-filled-tonal-icon-button class="settings-icon-button" id="setClose" type="button" aria-label="关闭"><md-icon>close</md-icon></md-filled-tonal-icon-button></div>
   <div class="modal-body">
-
-    <div class="set-section">
+    <div id="settingsHome">
+      <nav class="settings-menu" aria-label="设置分类">
+        <button class="settings-entry" type="button" data-settings-page="appearance">
+          <morph-icon data-icon="contrast" aria-hidden="true"></morph-icon>
+          <span><strong>外观设置</strong><small>日夜模式、主色、背景、列表布局</small></span>
+          <morph-icon data-icon="right" aria-hidden="true"></morph-icon>
+        </button>
+        <button class="settings-entry" type="button" data-settings-page="features">
+          <morph-icon data-icon="settings" aria-hidden="true"></morph-icon>
+          <span><strong>功能设置</strong><small>分类、预算、更新、小部件、AI</small></span>
+          <morph-icon data-icon="right" aria-hidden="true"></morph-icon>
+        </button>
+      </nav>
+<div class="set-section">
+      <div class="set-btns">
+        <button class="btn-line" id="exportBtn">导出备份</button>
+        <button class="btn-line" id="importBtn">导入备份</button>
+      </div>
+      <button class="btn-line danger" id="clearBtn">清空全部</button>
+      <input type="file" id="importFile" accept=".json" hidden>
+    </div>
+    </div>
+    <div id="settingsAppearance" hidden>
+<div class="set-section">
       <h3>外观 · 日夜模式</h3>
       <div class="db-seg" id="colorModeSeg" style="margin: 8px 0 16px;">
         <button class="seg" data-mode="system">跟随系统</button>
@@ -257,7 +310,7 @@ try{
 
     <div class="set-divide"></div>
 
-    <div class="set-section">
+<div class="set-section">
       <h3>主页面背景</h3>
       <div class="db-seg" id="bgTypeSeg" style="margin: 8px 0 12px;">
         <button class="seg on" data-bg="default">默认背景</button>
@@ -275,9 +328,9 @@ try{
 
       <!-- 背景图片配置面板 -->
       <div id="bgImagePanel" style="display:none; margin-bottom: 12px;">
-        <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn-line" id="uploadBgBtn" style="flex:1;">选择背景图片</button>
-          <button class="btn-line danger" id="removeBgBtn" style="flex:0 0 76px; display:none;">移除图片</button>
+        <div class="bg-image-actions">
+          <button class="btn-line" id="uploadBgBtn">选择背景图片</button>
+          <button class="btn-line danger" id="removeBgBtn" style="display:none;">移除图片</button>
           <input type="file" id="bgFileInput" accept="image/*" hidden>
         </div>
         <div id="bgPreviewBox" style="margin-top:10px; display:none; align-items:center; gap:10px;">
@@ -292,31 +345,14 @@ try{
           <span>背景透明度</span>
           <span class="slider-val" id="valBgOpacity">80%</span>
         </div>
-        <input type="range" class="density-slider" id="sliderBgOpacity" min="10" max="100" step="5" value="80">
+        <div class="slider-control"><input type="range" class="density-slider" id="sliderBgOpacity" aria-label="背景透明度" min="10" max="100" step="5" value="80"></div>
       </div>
     </div>
 
     <div class="set-divide"></div>
 
-    <div class="set-section">
-      <h3>类型</h3>
-      <div class="tags" id="setTypes"></div>
-    </div>
-
-    <div class="set-section">
-      <h3>场景分组</h3>
-      <div class="tags" id="setScenes"></div>
-    </div>
-
-    <div class="set-section">
-      <h3>时间分组</h3>
-      <div class="tags" id="setTimes"></div>
-    </div>
-
-    <div class="set-divide"></div>
-
-    <div class="set-section">
-      <h3>列表布局 · 自定义间距与字号</h3>
+<div class="set-section">
+      <h3>列表布局</h3>
       <div class="db-seg" id="spacingPresetSeg" style="margin: 8px 0 10px;">
         <button class="seg" data-preset="compact">紧凑</button>
         <button class="seg" data-preset="standard">标准</button>
@@ -326,18 +362,18 @@ try{
       <div class="custom-spacing-box">
         <div class="slider-row">
           <div class="slider-label">
-            <span>卡片间距（外部间隙）</span>
+            <span>卡片间距</span>
             <span class="slider-val" id="valItemGap">10px</span>
           </div>
-          <input type="range" class="density-slider" id="sliderItemGap" min="4" max="22" step="1" value="10">
+          <div class="slider-control"><input type="range" class="density-slider" id="sliderItemGap" aria-label="卡片间距" min="4" max="22" step="1" value="10"></div>
         </div>
 
         <div class="slider-row">
           <div class="slider-label">
-            <span>卡片内边距（内部留白）</span>
+            <span>卡片内边距</span>
             <span class="slider-val" id="valItemPad">13px</span>
           </div>
-          <input type="range" class="density-slider" id="sliderItemPad" min="6" max="22" step="1" value="13">
+          <div class="slider-control"><input type="range" class="density-slider" id="sliderItemPad" aria-label="卡片内边距" min="6" max="22" step="1" value="13"></div>
         </div>
 
         <div class="slider-row">
@@ -345,21 +381,41 @@ try{
             <span>标题字号大小</span>
             <span class="slider-val" id="valItemFont">15px</span>
           </div>
-          <input type="range" class="density-slider" id="sliderItemFont" min="12" max="19" step="0.5" value="15">
+          <div class="slider-control"><input type="range" class="density-slider" id="sliderItemFont" aria-label="标题字号大小" min="12" max="19" step="0.5" value="15"></div>
         </div>
       </div>
+    </div>
+    </div>
+    <div id="settingsFeatures" hidden>
+<div class="set-section">
+      <h3>类型</h3>
+      <div class="tags" id="setTypes"></div>
     </div>
 
     <div class="set-divide"></div>
 
-    <div class="set-section">
+<div class="set-section">
+      <h3>场景分组</h3>
+      <div class="tags" id="setScenes"></div>
+    </div>
+
+    <div class="set-divide"></div>
+
+<div class="set-section">
+      <h3>时间分组</h3>
+      <div class="tags" id="setTimes"></div>
+    </div>
+
+    <div class="set-divide"></div>
+
+<div class="set-section">
       <h3>统计与预算</h3>
       <label class="switch"><input type="checkbox" id="showCostSummary"><span></span><em>统计预算汇总</em></label>
     </div>
 
     <div class="set-divide"></div>
 
-    <div class="set-section">
+<div class="set-section">
       <h3>更新与安装</h3>
       <label class="switch"><input type="checkbox" id="autoCheckUpdate"><span></span><em>启动时自动检查更新</em></label>
       <label class="switch" style="margin-top:8px;"><input type="checkbox" id="autoInstallUpdate"><span></span><em>更新包下载完成后自动安装</em></label>
@@ -367,7 +423,7 @@ try{
 
     <div class="set-divide"></div>
 
-    <div class="set-section">
+<div class="set-section">
       <h3>桌面小部件</h3>
       <label class="switch"><input type="checkbox" id="widgetRemoveDone"><span></span><em>在小部件中完成事项后自动移除</em></label>
       <div class="widget-2x2-settings">
@@ -388,11 +444,9 @@ try{
       </div>
     </div>
 
-
-
     <div class="set-divide"></div>
 
-    <div class="set-section">
+<div class="set-section">
       <h3>AI · 云端增强</h3>
       <label class="switch ai-switch"><input type="checkbox" id="aiEnabled"><span></span><em>启用 AI 增强</em></label>
       <label class="fld">
@@ -405,19 +459,8 @@ try{
         <input type="text" id="aiModel" placeholder="模型名，如 deepseek-chat" data-aifield="model" autocomplete="off">
       </label>
     </div>
-
-    <div class="set-divide"></div>
-
-    <div class="set-section">
-      <h3>数据</h3>
-      <button class="btn-line" id="tidyBtn">智能整理</button>
-      <div class="set-btns">
-        <button class="btn-line" id="exportBtn">导出备份</button>
-        <button class="btn-line" id="importBtn">导入备份</button>
-      </div>
-      <button class="btn-line danger" id="clearBtn">清空全部</button>
-      <input type="file" id="importFile" accept=".json" hidden>
     </div>
+
   </div>
 </div>
 
@@ -428,25 +471,33 @@ try{
   <div class="modal-body">
     <div class="info-hero">
       <div class="info-logo">
-        <img class="info-logo-light" src="app-icon.png" alt="超级清单">
-        <img class="info-logo-dark" src="app-icon-dark.png" alt="">
+        <img class="info-logo-light" src="web/assets/icons/app-icon.png" alt="超级清单">
+        <img class="info-logo-dark" src="web/assets/icons/app-icon-dark.png" alt="">
       </div>
       <div class="info-name">超级清单</div>
-      <div class="info-ver" id="infoVer">SuperTodo · 版本 1.9.9</div>
+      <div class="info-ver" id="infoVer">SuperTodo · 版本 1.10.0</div>
+
       <div class="info-desc">轻量 · 优雅 · 丝滑的待办与清单管理</div>
       <div class="info-author">Crafted with <span class="heart">♥</span> by <strong>派大星TuT</strong></div>
     </div>
+    <div class="set-section">
+      <h3>界面风格</h3>
+      <div class="db-seg" id="interfaceStyleSeg" style="margin:8px 0 16px;">
+        <button class="seg" data-style="classic">经典</button>
+        <button class="seg" data-style="md3">Material 3</button>
+      </div>
+    </div>
     <div class="info-actions">
       <button class="info-pill" id="infoUpdateBtn" type="button">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+        <morph-icon data-icon="refresh" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>
         <span>检查更新</span>
       </button>
       <button class="info-pill" id="infoChangelogBtn" type="button">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+        <morph-icon data-icon="history" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>
         <span>更新日志</span>
       </button>
       <button class="info-pill" id="infoRepo" type="button">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        <morph-icon data-icon="github" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>
         <span>开源仓库</span>
       </button>
     </div>
@@ -530,7 +581,7 @@ try{
   <!-- 阶段二：应用内下载中（带进度条） -->
   <div class="modal-body update-body update-progress-stage" id="updateProgressStage" hidden>
     <div class="up-progress-icon">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+      <morph-icon data-icon="download" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>
     </div>
     <div class="up-progress-status" id="updateProgressStatus">正在下载新版本安装包…</div>
     <div class="up-bar-track">
@@ -549,7 +600,7 @@ try{
   <!-- 阶段三：下载完成（成功页面，取消与右下角胶囊包裹安装） -->
   <div class="modal-body update-body update-success-stage" id="updateSuccessStage" hidden>
     <div class="up-success-icon">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+      <morph-icon data-icon="check" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>
     </div>
     <div class="up-success-title">新版本安装包下载完成！</div>
     <div class="up-success-desc" id="updateSuccessDesc">安装包已就绪，立即安装体验最新功能。</div>
@@ -559,6 +610,21 @@ try{
     <div class="spacer"></div>
     <button class="btn-filled" id="updateInstallBtn">立即安装</button>
   </div>
+</div>
+
+<!-- ===== 应用内配色面板 ===== -->
+<div class="modal-mask" id="colorMask" hidden></div>
+<div class="modal color-modal" id="colorModal" role="dialog" aria-modal="true" aria-labelledby="colorTitle" hidden>
+  <div class="modal-head"><h2 id="colorTitle">选择主色</h2><md-filled-tonal-icon-button class="settings-icon-button" id="colorClose" type="button" aria-label="关闭配色面板"><md-icon>close</md-icon></md-filled-tonal-icon-button></div>
+  <div class="modal-body">
+    <div class="color-preview" id="colorPreview" aria-label="所选颜色预览"></div>
+    <label class="fld color-hex"><span class="fld-label">HEX 色值</span><input id="colorHex" type="text" maxlength="7" spellcheck="false" autocomplete="off" aria-label="HEX 色值"></label>
+    <div class="palette" id="colorPresets" aria-label="预设颜色"></div>
+    <label class="color-channel"><span>色相 <output id="colorHueValue"></output></span><input class="color-range" id="colorHue" type="range" min="0" max="360" aria-label="色相"></label>
+    <label class="color-channel"><span>饱和度 <output id="colorSaturationValue"></output></span><input class="color-range" id="colorSaturation" type="range" min="0" max="100" aria-label="饱和度"></label>
+    <label class="color-channel"><span>明度 <output id="colorLightnessValue"></output></span><input class="color-range" id="colorLightness" type="range" min="0" max="100" aria-label="明度"></label>
+  </div>
+  <div class="modal-foot"><div class="spacer"></div><button class="btn-text" id="colorCancel">取消</button><button class="btn-filled" id="colorApply">应用颜色</button></div>
 </div>
 
 <!-- ===== 通用对话框（替代原生 alert/confirm/prompt） ===== -->
@@ -592,7 +658,7 @@ try{
   <div class="modal-body ctx-body">
     <button class="ctx-action-item" id="ctxRename">
       <div class="ctx-action-icon edit">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+        <morph-icon data-icon="edit" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>
       </div>
       <div class="ctx-action-text">
         <div class="ctx-action-title">重命名</div>
@@ -602,7 +668,7 @@ try{
     </button>
     <button class="ctx-action-item danger" id="ctxDelete">
       <div class="ctx-action-icon delete">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        <morph-icon data-icon="delete" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>
       </div>
       <div class="ctx-action-text">
         <div class="ctx-action-title">删除标签</div>
@@ -616,13 +682,40 @@ try{
   </div>
 </div>
 
+<!-- ===== 滑块调节临时预览悬浮条 ===== -->
+<div class="opacity-preview-bar" id="opacityPreviewBar" hidden>
+  <div class="op-preview-header">
+    <span class="op-preview-title" id="opPreviewTitle">
+      <span id="opPreviewIcon" style="display:inline-flex;align-items:center;">
+        <morph-icon data-icon="contrast" size="24" stroke-width="1.8" spring="snappy" reduced-motion="user" aria-hidden="true"></morph-icon>
+      </span>
+      <span id="opPreviewTitleText">背景透明度调节</span>
+    </span>
+    <span class="op-preview-val" id="opPreviewVal">80%</span>
+  </div>
+  <div class="op-preview-track-wrap slider-control">
+    <input type="range" class="density-slider op-preview-slider" id="opPreviewSlider" aria-label="背景透明度调节" min="10" max="100" step="5" value="80">
+  </div>
+</div>
+
 <!-- ===== 右下角浮动按钮（速记在上，新增在下） ===== -->
 <div class="fab-stack">
   <button class="fab fab-ai" id="fabAi" aria-label="AI速记"></button>
-  <button class="fab" id="fab" aria-label="添加"></button>
+  <button class="fab" id="fab" aria-label="添加事项"></button>
 </div>
 
-<script src="Sortable.min.js"></script>
-<script src="app.js"></script>
+<script src="web/vendor/sortable/Sortable.min.js"></script>
+<script type="module" src="web/vendor/material/material-buttons.min.js"></script>
+<script src="web/vendor/shoelace/progress-ring.min.js"></script>
+<script src="web/vendor/gsap/gsap.min.js"></script>
+<script src="web/vendor/motion/motion.js"></script>
+<script src="web/vendor/morphicons/morphicons.min.js"></script>
+<script src="web/js/ui/icons.js"></script>
+<script src="web/js/ui/animations.js?v=subtask-shared-type"></script>
+<script src="web/vendor/air-datepicker/air-datepicker.js"></script>
+<script src="web/vendor/air-datepicker/air-datepicker-zh.js"></script>
+<script src="web/js/features/date-picker.js"></script>
+<script src="web/js/features/repeat.js?v=subtask-reset"></script>
+<script src="web/js/app.js?v=subtask-shared-type"></script>
 </body>
 </html>
