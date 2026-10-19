@@ -201,6 +201,7 @@
 
     /* 待办行样式 */
     .task-row {
+      position: relative;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -215,7 +216,8 @@
       margin-bottom: 8px;
       transition: transform 0.18s cubic-bezier(0.34, 1.4, 0.64, 1), background 0.2s, opacity 0.22s,
         height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), padding-top 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
-        padding-bottom 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), margin-bottom 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
+        padding-bottom 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), padding-right 0.26s cubic-bezier(0.2, 0.8, 0.2, 1),
+        margin-bottom 0.28s cubic-bezier(0.2, 0.8, 0.2, 1),
         border-width 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
     .task-row:last-child {
@@ -363,6 +365,76 @@
     .drag-handle:active {
       cursor: grabbing;
       color: var(--primary);
+    }
+
+    /* 行内删除：常态是纯图标（无底色无描边）；点一次后从行右侧滑入 danger 确认块，整行内容被压缩 */
+    .row-del {
+      position: relative;
+      z-index: 2;
+      flex: 0 0 auto;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-sec);
+      font: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s, opacity 0.12s linear;
+    }
+    .row-del:active {
+      color: var(--danger);
+    }
+
+    /* 确认块：贴住行的右端，上/下/右各外扩 1px 盖住那条 1px 透明边框。
+       行本身 overflow:hidden + 14px 圆角会把它的右上/右下角裁成与行完全一致的弧度，
+       所以圆角与上下边框之间不会露缝，不需要额外对齐计算。 */
+    .row-del-panel {
+      position: absolute;
+      z-index: 3;
+      top: -1px;
+      right: -1px;
+      bottom: -1px;
+      width: 72px;
+      padding: 0;
+      border: 0;
+      border-radius: 0 14px 14px 0;
+      background: var(--danger);
+      color: #FFFFFF;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      /* 贴着行的右边框往左展开：clip-path 只裁不缩放，「删除」两个字全程不变形 */
+      clip-path: inset(0 0 0 100%);
+      transition: clip-path 0.26s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.1s linear;
+    }
+    .task-row.confirming-del {
+      padding-right: 82px;
+    }
+    .task-row.confirming-del .row-del-panel {
+      opacity: 1;
+      pointer-events: auto;
+      clip-path: inset(0 0 0 0);
+    }
+    /* 图标与拖拽手柄让位给确认块 */
+    .task-row.confirming-del .row-del,
+    .task-row.confirming-del .drag-handle {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .row-del-panel:active {
+      filter: brightness(0.94);
     }
 
     /* 底部功能区 */
@@ -712,6 +784,8 @@
     function closeSelfWithAnimation() {
       if (isExiting) return;
       isExiting = true;
+      // 关闭弹窗时把删除确认态一并还原，避免下次打开残留
+      cancelDeleteConfirm();
       const overlay = document.getElementById('dialogOverlay');
       overlay.classList.add('closing');
       setTimeout(() => {
@@ -767,7 +841,11 @@
         return '<div class="task-row ' + (done ? 'done' : '') + '" data-id="' + escapeHtml(t.id) + '" onclick="toggleTaskDone(this.dataset.id)">' +
           '<div class="task-check"></div>' +
           '<div class="task-title"><span class="t-text">' + escapeHtml(item.title) + '</span></div>' +
+          '<button type="button" class="row-del" data-del-id="' + escapeHtml(t.id) + '" aria-label="删除" title="删除" onclick="event.stopPropagation();onRowDeleteClick(this)">' +
+            '<span class="del-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg></span>' +
+          '</button>' +
           '<div class="drag-handle" title="按住拖拽" onclick="event.stopPropagation()"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="2"></circle><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="15" cy="12" r="2"></circle><circle cx="9" cy="18" r="2"></circle><circle cx="15" cy="18" r="2"></circle></svg></div>' +
+          '<button type="button" class="row-del-panel" data-del-id="' + escapeHtml(t.id) + '" aria-label="确认删除" onclick="event.stopPropagation();onRowDeleteClick(this)">删除</button>' +
         '</div>';
       }).join('');
       initSortable(listEl);
@@ -789,12 +867,21 @@
 
     // 完成动效时间线：划线 280 → 塌陷 280 → 沉底重入 220，合计 780ms
     // 取消勾选反向：收线 0→250 →（重叠 30ms）尾部塌陷 220→290 → 未完成区末尾展开 290→520
+    // 与 app.js toggleDone 对齐：先翻转完成状态，再同步子任务与重复待办
+    function syncQuadrantDone(id, done) {
+      const q = rootData.quadrantWidget;
+      if (!q || typeof q !== 'object') return;
+      ['q1', 'q2', 'q3', 'q4'].forEach(k => {
+        if (!Array.isArray(q[k])) return;
+        const target = q[k].find(x => x && x.id === id);
+        if (target) target.done = done;
+      });
+    }
+
     function toggleTaskDone(id) {
-      const task = (rootData.widget2x2 || []).find(t => t.id === id);
-      syncSubtasksDone(mainItem);
-      if (mainItem.done) createRepeatItem(rootData.items, mainItem);
-      const mainItem = (rootData.items || []).find(it => it.id === id);
-      if (!task || !mainItem) return;
+      const task = (rootData.widget2x2 || []).find(t => t && t.id === id);
+      const mainItem = (rootData.items || []).find(it => it && it.id === id);
+      if (!mainItem) return;
       mainItem.done = !mainItem.done;
       if (mainItem.done) {
         mainItem.doneScenes = Array.isArray(mainItem.scenes) ? mainItem.scenes.slice() : [];
@@ -803,7 +890,11 @@
         mainItem.doneScenes = [];
         mainItem.doneTypes = [];
       }
-      task.done = mainItem.done;
+      if (task) task.done = mainItem.done;
+      // 勾选与取消都要同步子任务（取消主任务时子任务一并回落）；重复待办由 createRepeatItem 内部按 done 判断
+      syncSubtasksDone(mainItem);
+      createRepeatItem(rootData.items, mainItem);
+      syncQuadrantDone(id, mainItem.done);
       saveData();
 
       const selector = '.task-row[data-id="' + id + '"]';
@@ -847,6 +938,98 @@
         document.querySelector(selector).style.height = '';
       }, 780);
     }
+
+    // ----------------------------------------------------
+    // 行内删除：垃圾桶图标 → danger 二次确认 → 移入回收站
+    // ----------------------------------------------------
+    let confirmingDeleteId = null;
+    let confirmingDeleteTimer = null;
+
+    // 还原确认态。关闭弹窗、点另一个删除按钮、点弹窗其它区域、超时都会走到这里
+    function cancelDeleteConfirm() {
+      if (confirmingDeleteTimer) {
+        clearTimeout(confirmingDeleteTimer);
+        confirmingDeleteTimer = null;
+      }
+      if (!confirmingDeleteId) return;
+      const row = document.querySelector('.task-row.confirming-del');
+      if (row) row.classList.remove('confirming-del');
+      confirmingDeleteId = null;
+    }
+
+    function onRowDeleteClick(btn) {
+      const id = btn.dataset.delId;
+      if (!id) return;
+      if (confirmingDeleteId === id) {
+        // 不先撤 class：让红块跟着这一行一起塌陷，而不是先弹回常态
+        if (confirmingDeleteTimer) {
+          clearTimeout(confirmingDeleteTimer);
+          confirmingDeleteTimer = null;
+        }
+        confirmingDeleteId = null;
+        performDelete(id);
+        return;
+      }
+      // 同一时刻只允许一行处于确认态：先把上一行还原，再让当前行进入
+      cancelDeleteConfirm();
+      const row = btn.closest('.task-row');
+      if (!row) return;
+      confirmingDeleteId = id;
+      row.classList.add('confirming-del');
+      confirmingDeleteTimer = setTimeout(cancelDeleteConfirm, 3000);
+    }
+
+    function performDelete(id) {
+      const listEl = document.getElementById('curatedListEl');
+      const row = listEl ? listEl.querySelector('.task-row[data-id="' + id + '"]') : null;
+      // 与 App 内删除保持一致：移入回收站，而不是彻底删除
+      const commit = () => {
+        const idx = (rootData.items || []).findIndex(it => it && it.id === id);
+        if (idx < 0) {
+          renderList();
+          return;
+        }
+        const removed = rootData.items.splice(idx, 1)[0];
+        if (!Array.isArray(rootData.trash)) rootData.trash = [];
+        rootData.trash.unshift(Object.assign({}, removed, { deletedAt: Date.now() }));
+        rootData.widget2x2 = (rootData.widget2x2 || []).filter(w => w && w.id !== id);
+        const q = rootData.quadrantWidget;
+        if (q && typeof q === 'object') {
+          ['q1', 'q2', 'q3', 'q4'].forEach(k => {
+            if (Array.isArray(q[k])) q[k] = q[k].filter(x => x && x.id !== id);
+          });
+        }
+        saveData();
+        renderList();
+      };
+      if (!row) {
+        commit();
+        return;
+      }
+      // height 得先是具体数值才能往 0 过渡，和勾选离场同一套做法
+      row.style.height = row.offsetHeight + 'px';
+      row.offsetWidth;
+      row.classList.add('leaving');
+      setTimeout(commit, 280);
+    }
+
+    // 确认态兜底：点行内其它区域只还原、不切换完成状态；点别处还原后照常放行
+    document.addEventListener('click', function (e) {
+      if (!confirmingDeleteId) return;
+      const target = e.target;
+      if (!target || typeof target.closest !== 'function') return;
+      const delBtn = target.closest('.row-del, .row-del-panel');
+      // 它自己的按钮：交给 onRowDeleteClick 处理（第二次点击=删除）
+      if (delBtn && delBtn.dataset.delId === confirmingDeleteId) return;
+      cancelDeleteConfirm();
+      // 另一个删除按钮：放行，让它自己进入确认态
+      if (delBtn) return;
+      // 行内其它区域：吞掉这次点击，避免顺带切换完成状态
+      if (target.closest('.task-row')) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, true);
 
     function showInputRow() {
       document.getElementById('bgStylePanel').style.display = 'none';

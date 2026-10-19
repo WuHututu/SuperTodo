@@ -65,12 +65,13 @@ public class WidgetConfigActivity extends Activity {
         "未完成优先（未完成置顶）"
     };
 
+    // 持久化值：必须与 WidgetDataManager 的 SORT_* 常量保持一致，排序比较器只认这套值
     private static final String[] SORT_KEYS = new String[] {
-        "默认",
-        "重要程度",
-        "截止时间",
-        "金额",
-        "未完成优先"
+        WidgetDataManager.SORT_DEFAULT,
+        WidgetDataManager.SORT_STAR,
+        WidgetDataManager.SORT_DUE,
+        WidgetDataManager.SORT_COST,
+        WidgetDataManager.SORT_UNDONE_FIRST
     };
 
     @Override
@@ -348,7 +349,7 @@ public class WidgetConfigActivity extends Activity {
             ? spTypeCategory.getSelectedItem().toString() : "全部标签";
 
         int sortPos = spSortKey.getSelectedItemPosition();
-        String sortKey = (sortPos >= 0 && sortPos < SORT_KEYS.length) ? SORT_KEYS[sortPos] : "默认";
+        String sortKey = (sortPos >= 0 && sortPos < SORT_KEYS.length) ? SORT_KEYS[sortPos] : WidgetDataManager.SORT_DEFAULT;
 
         boolean hideDone = cbHideDone.isChecked();
 

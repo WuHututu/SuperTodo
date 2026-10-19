@@ -821,7 +821,36 @@ public class WidgetDataManager {
     }
 
     public static String getWidgetSortKey(Context context, int widgetId) {
-        return getPrefs(context).getString("config_sort_key_" + widgetId, SORT_DEFAULT);
+        return normalizeSortKey(getPrefs(context).getString("config_sort_key_" + widgetId, SORT_DEFAULT));
+    }
+
+    /**
+     * 把持久化的排序值统一成 SORT_* 常量。
+     * 早期版本把中文标签直接当排序值存进了配置，这里做一次读取端迁移，
+     * 老用户已保存的小部件配置无需重新设置即可生效。
+     */
+    public static String normalizeSortKey(String sortKey) {
+        if (sortKey == null) return SORT_DEFAULT;
+        switch (sortKey) {
+            case SORT_DEFAULT:
+            case SORT_STAR:
+            case SORT_DUE:
+            case SORT_COST:
+            case SORT_UNDONE_FIRST:
+                return sortKey;
+            case "默认":
+                return SORT_DEFAULT;
+            case "重要程度":
+                return SORT_STAR;
+            case "截止时间":
+                return SORT_DUE;
+            case "金额":
+                return SORT_COST;
+            case "未完成优先":
+                return SORT_UNDONE_FIRST;
+            default:
+                return SORT_DEFAULT;
+        }
     }
 
     public static boolean getWidgetSortAsc(Context context, int widgetId) {
