@@ -56,7 +56,8 @@ const Icons = (() => {
     glyphs.forEach(icon=>{if(!icon.hasAttribute('icon')) icon.setAttribute('icon',paths[icon.dataset.icon]||paths.info);});
     for(const [selector,name] of Object.entries(slots)){
       const elements=[...(root.matches?.(selector)?[root]:[]),...root.querySelectorAll(selector)];
-      elements.forEach(el=>{if(!el.querySelector('morph-icon')) el.insertAdjacentHTML('beforeend',html(name));});
+      // 已经自带 <svg> 的元素（例如小组件弹窗里手写的拖拽手柄）不再补图标，避免出现两个手柄
+      elements.forEach(el=>{if(!el.querySelector('morph-icon') && !el.querySelector('svg')) el.insertAdjacentHTML('beforeend',html(name));});
     }
     root.querySelectorAll('.card-check, .task-check, .qw-chk, .pal-sw').forEach(el=>set(el,el.classList.contains('done')||el.classList.contains('on')||el.closest('.task-row.done')?'check':'blank',false));
     root.querySelectorAll('.subtask-check input').forEach(input=>{
