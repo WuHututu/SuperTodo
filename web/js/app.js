@@ -27,6 +27,7 @@ let state={
   ai:{enabled:false,base:'',key:'',model:''},
   widget2x2:[],
   widget2x2Background:{opacity:80,blur:12},
+  repeatQueue:[],
   dataUpdatedAt:0,
   quadrantWidget:{q1:[],q2:[],q3:[],q4:[]}
 };
@@ -147,6 +148,7 @@ function save(){
 function load(){
   try{const d=JSON.parse(localStorage.getItem(KEY));if(d){
     state.items=(d.items||[]).map(normalizeStoredItem);
+    state.repeatQueue=Array.isArray(d.repeatQueue)?d.repeatQueue:[];
     if(Array.isArray(d.types)&&d.types.length)state.types=d.types;
     if(Array.isArray(d.scenes)&&d.scenes.length)state.scenes=d.scenes;
     if(Array.isArray(d.times)&&d.times.length)state.times=d.times;
@@ -186,6 +188,16 @@ function load(){
   state.items=state.items.filter(x=>x&&!trashIds.has(x.id));
   state.widget2x2=buildWidget2x2Items(state.widget2x2,state.items);
   syncFromNativeWidget();
+}
+
+// 重复待办“先建后藏”的释放：到点的条目从 repeatQueue 挪进 items。
+// 只在应用打开期间生效，不依赖自启动或后台常驻。
+function flushRepeatQueue(){
+  const released=releaseRepeatQueue(state);
+  if(!released.length) return false;
+  save();
+  if(typeof render==='function') render();
+  return true;
 }
 
 /* ========== 桌面小部件桥接（小米澎湃OS / Android） ========== */
@@ -259,6 +271,19 @@ function syncFromNativeWidget(){
             changed=true;
           }
         });
+        // 小组件弹窗可能在应用没运行时生成过下一次待办，这里按 id 并回本地队列
+        if(Array.isArray(d.repeatQueue)&&d.repeatQueue.length){
+          if(!Array.isArray(state.repeatQueue)) state.repeatQueue=[];
+          const knownQ=new Set(state.repeatQueue.map(x=>x&&x.id).filter(Boolean));
+          const inItems=new Set(state.items.map(x=>x&&x.id).filter(Boolean));
+          d.repeatQueue.forEach(it=>{
+            if(it&&it.id&&!knownQ.has(it.id)&&!inItems.has(it.id)){
+              state.repeatQueue.push(it);
+              knownQ.add(it.id);
+              changed=true;
+            }
+          });
+        }
         if(Array.isArray(d.widget2x2)){
           const nextWidget2x2=buildWidget2x2Items(d.widget2x2,state.items);
           if(JSON.stringify(state.widget2x2||[])!==JSON.stringify(nextWidget2x2)){
@@ -854,6 +879,8 @@ function fmtDeletedTime(ts){
 function moveToTrash(id){
   const it = state.items.find(x => x.id === id);
   if(!it) return;
+  // 删掉这条已完成事项时，把还没露面的下一次一起撤回，避免留下孤儿
+  dropPendingRepeat(state, it);
   state.items = state.items.filter(x => x.id !== id);
   if(!Array.isArray(state.trash)) state.trash = [];
   const trashItem = Object.assign({}, it, { deletedAt: Date.now() });
@@ -1675,8 +1702,11 @@ function renderSpacingControls(){
 }
 function init(){
   load();
+  if(releaseRepeatQueue(state).length) save();
   const params=new URLSearchParams(window.location.search);
-  // Initialize demo data after TEST_DEMO_DATA exists, in its own storage namespace.
+  // 跨过零点时（应用一直开着）自动把到点的重复待办放出来；只做页面内定时，不申请后台。
+  setInterval(flushRepeatQueue, 30000);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) flushRepeatQueue(); });
   if(params.get('seed')==='1'||params.get('test')==='1'||(DEMO_MODE&&!state.items.length))loadTestDemoData();
   applyInterfaceStyle();
   applyCustomBg();
@@ -2042,7 +2072,7 @@ function toggleDone(id, kind, key){
   }
 
   if(!targetDone || it.done) syncSubtasksDone(it);
-  createRepeatItem(state.items, it);
+  if(it.done) createRepeatItem(state, it); else dropPendingRepeat(state, it);
   syncItemDoneToQuadrant(it.id, it.done);
   triggerHaptic(targetDone ? 'medium' : 'light');
   save();
@@ -4193,7 +4223,7 @@ function toggleQuadrantItemDone(qKey, idx){
         localIt.doneTypes = [];
       }
       syncSubtasksDone(localIt);
-      createRepeatItem(state.items, localIt);
+      if(localIt.done) createRepeatItem(state, localIt); else dropPendingRepeat(state, localIt);
     }
 
     // 同步其他象限中包含的同 ID 事项状态

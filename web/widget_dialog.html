@@ -893,7 +893,7 @@
       if (task) task.done = mainItem.done;
       // 勾选与取消都要同步子任务（取消主任务时子任务一并回落）；重复待办由 createRepeatItem 内部按 done 判断
       syncSubtasksDone(mainItem);
-      createRepeatItem(rootData.items, mainItem);
+      if (mainItem.done) createRepeatItem(rootData, mainItem); else dropPendingRepeat(rootData, mainItem);
       syncQuadrantDone(id, mainItem.done);
       saveData();
 
@@ -990,6 +990,8 @@
           return;
         }
         const removed = rootData.items.splice(idx, 1)[0];
+        // 删除已完成事项时，连带撤回还没露面的下一次重复待办
+        if (removed) dropPendingRepeat(rootData, removed);
         if (!Array.isArray(rootData.trash)) rootData.trash = [];
         rootData.trash.unshift(Object.assign({}, removed, { deletedAt: Date.now() }));
         rootData.widget2x2 = (rootData.widget2x2 || []).filter(w => w && w.id !== id);
