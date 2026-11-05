@@ -681,8 +681,8 @@ public class WidgetDataManager {
     }
 
     /**
-     * 未勾选方框的「进度描边」版本：5px 内容色边框保持原样，上面叠一条居中的 4px 进度细线。
-     * 细线以路径为中心，所以宽度小于边框时天然落在边框正中间，不会占满边框宽度。
+     * 未勾选方框的「进度描边」版本：整圈 5px 边框按时间比例变色。
+     * 未走到的部分保持内容色，走过的部分用进度色覆盖，宽度与边框一致。
      *
      * @param color         边框颜色（内容色）
      * @param progressColor 进度细线颜色（已做过对比度校正）
@@ -730,7 +730,7 @@ public class WidgetDataManager {
                 : measure.getSegment(length - filled, length, segment, true);
         if (!segOk) return bitmap;
 
-        paint.setStrokeWidth(2.5f * scale);
+        paint.setStrokeWidth(5 * scale);
         paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
         paint.setColor(progressColor);
         canvas.drawPath(segment, paint);
