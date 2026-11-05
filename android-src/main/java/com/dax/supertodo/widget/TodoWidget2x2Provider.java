@@ -71,6 +71,7 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
         }
         views.setTextColor(R.id.widget_2x2_empty_view, contentColor);
 
+        int progressColor = WidgetDataManager.get2x2ProgressColor(context);
         List<TodoItem> items = stageItems != null ? stageItems : WidgetDataManager.load2x2Items(context);
         int capacity = getVisibleRowCount(context, height);
         int shown = 0;
@@ -100,6 +101,8 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
                             0, item.title.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 }
                 title = styled;
+            } else {
+                title = progressTitle(item, progressColor);
             }
             views.setTextViewText(titles[shown], title);
             Intent intent = new Intent(context, TodoWidget2x2Provider.class)
@@ -131,6 +134,40 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
         );
         views.setOnClickPendingIntent(R.id.widget_2x2_root, pendingIntent);
         appWidgetManager.updateAppWidget(appWidgetId, views);
+    }
+
+    /**
+     * 把标题按「创建时间 → 截止日 23:59:59」的时间比例着色：
+     * 已过部分用进度条颜色，剩余部分保持原色；到点后整段都是进度条颜色。
+     * 没有截止日或缺少创建时间的条目原样返回。
+     */
+    private static CharSequence progressTitle(TodoItem item, int progressColor) {
+        if (item == null || item.title == null || item.title.isEmpty()) {
+            return item == null ? "" : item.title;
+        }
+        if (item.created <= 0L || item.due == null || !item.due.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            return item.title;
+        }
+        long end;
+        try {
+            java.text.SimpleDateFormat format = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
+            format.setLenient(false);
+            end = format.parse(item.due).getTime() + 86400000L - 1000L;
+        } catch (Exception e) {
+            return item.title;
+        }
+        long total = end - item.created;
+        if (total <= 0L) return item.title;
+        double ratio = (double) (System.currentTimeMillis() - item.created) / (double) total;
+        if (ratio <= 0d) return item.title;
+        if (ratio > 1d) ratio = 1d;
+        int filled = (int) Math.round(ratio * item.title.length());
+        if (filled <= 0) return item.title;
+        android.text.SpannableString text = new android.text.SpannableString(item.title);
+        int safeFilled = Math.min(filled, item.title.length());
+        text.setSpan(new android.text.style.ForegroundColorSpan(progressColor),
+                0, safeFilled, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        return text;
     }
 
     private static int getVisibleRowCount(Context context, int heightDp) {

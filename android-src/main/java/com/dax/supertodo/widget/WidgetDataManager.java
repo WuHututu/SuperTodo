@@ -287,6 +287,18 @@ public class WidgetDataManager {
         return fallback;
     }
 
+    /**
+     * 2x2 文字进度条的颜色：用户在应用设置里选过就用它，没选过跟随主题色。
+     */
+    public static int get2x2ProgressColor(Context context) {
+        if (context == null) return getWidgetThemeColor(context);
+        try {
+            String hex = new JSONObject(getWidgetData(context)).optString("widget2x2ProgressColor", "");
+            if (hex.matches("^#[0-9a-fA-F]{6}$")) return android.graphics.Color.parseColor(hex);
+        } catch (Exception ignore) {}
+        return getWidgetThemeColor(context);
+    }
+
     public static int getWidgetBackgroundColor(Context context) {
         boolean dark = context != null && (context.getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;

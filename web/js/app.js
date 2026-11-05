@@ -27,6 +27,7 @@ let state={
   ai:{enabled:false,base:'',key:'',model:''},
   widget2x2:[],
   widget2x2Background:{opacity:80,blur:12},
+  widget2x2ProgressColor:'',
   repeatQueue:[],
   dataUpdatedAt:0,
   quadrantWidget:{q1:[],q2:[],q3:[],q4:[]}
@@ -149,6 +150,7 @@ function load(){
   try{const d=JSON.parse(localStorage.getItem(KEY));if(d){
     state.items=(d.items||[]).map(normalizeStoredItem);
     state.repeatQueue=Array.isArray(d.repeatQueue)?d.repeatQueue:[];
+    if(typeof d.widget2x2ProgressColor==='string')state.widget2x2ProgressColor=d.widget2x2ProgressColor;
     if(Array.isArray(d.types)&&d.types.length)state.types=d.types;
     if(Array.isArray(d.scenes)&&d.scenes.length)state.scenes=d.scenes;
     if(Array.isArray(d.times)&&d.times.length)state.times=d.times;
@@ -310,6 +312,10 @@ function syncFromNativeWidget(){
         }
         if(nativeUpdatedAt>localUpdatedAt){
           state.dataUpdatedAt=nativeUpdatedAt;
+          changed=true;
+        }
+        if(typeof d.widget2x2ProgressColor==='string'&&d.widget2x2ProgressColor!==state.widget2x2ProgressColor){
+          state.widget2x2ProgressColor=d.widget2x2ProgressColor;
           changed=true;
         }
         if(d.widget2x2Background&&typeof d.widget2x2Background==='object'&&
@@ -2347,6 +2353,15 @@ function renderWidget2x2Settings(){
   if(opacityVal) opacityVal.textContent=state.widget2x2Background.opacity+'%';
   if(blur) blur.value=state.widget2x2Background.blur;
   if(blurVal) blurVal.textContent=state.widget2x2Background.blur+'dp';
+  const progressWrap=$('#paletteWidget2x2Progress');
+  const progressVal=$('#valWidget2x2Progress');
+  const current=(state.widget2x2ProgressColor||'').toLowerCase();
+  if(progressVal) progressVal.textContent=current||'跟随主题';
+  if(progressWrap){
+    progressWrap.innerHTML=
+      `<button class="pal-sw pal-sw-auto ${current?'':'on'}" data-c="" aria-label="跟随主题" aria-pressed="${!current}">主题</button>`+
+      PALETTE.map(c=>`<button class="pal-sw ${current===c?'on':''}" style="background:${c}" data-c="${c}" aria-label="进度条颜色 ${c}" aria-pressed="${current===c}"></button>`).join('');
+  }
 }
 
 let settingsPage='home';
@@ -2872,7 +2887,7 @@ function compressImageFile(file, maxWidth, quality, callback){
 }
 
 /* ========== 软件信息 ========== */
-const APP_VERSION='v1.12.1';
+const APP_VERSION='v1.13.0';
 const REPO_URL='https://github.com/PaidaxingTuT/SuperTodo';
 const REPO_API='https://api.github.com/repos/PaidaxingTuT/SuperTodo';
 let devClickCount=0, devClickTimer=null;
@@ -5037,6 +5052,16 @@ document.addEventListener('DOMContentLoaded',()=>{
       state.widget2x2Background.opacity=Math.max(10,Math.min(100,parseInt(e.target.value,10)||80));
       if(widgetOpacityVal)widgetOpacityVal.textContent=state.widget2x2Background.opacity+'%';
       save();
+    });
+  }
+  const progressSwatches=$('#paletteWidget2x2Progress');
+  if(progressSwatches){
+    progressSwatches.addEventListener('click',e=>{
+      const sw=e.target.closest('.pal-sw');
+      if(!sw)return;
+      state.widget2x2ProgressColor=(sw.dataset.c||'').toLowerCase();
+      save();
+      renderWidget2x2Settings();
     });
   }
   const widgetBlur=$('#sliderWidget2x2Blur');
