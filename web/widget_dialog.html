@@ -864,21 +864,6 @@
     // ----------------------------------------------------
     // 视图 A：展开清单渲染与逻辑
     // ----------------------------------------------------
-    // 文字进度条：按「创建时间 → 截止日 23:59:59」计算已过比例；缺任一时间返回 null
-    function progressRatio(item) {
-      if (!item || !item.created || !item.due) return null;
-      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(item.due);
-      if (!m) return null;
-      const end = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 59, 999).getTime();
-      const total = end - Number(item.created);
-      if (!(total > 0)) return null;
-      return Math.max(0, Math.min(1, (Date.now() - Number(item.created)) / total));
-    }
-    function progressColor() {
-      const c = (rootData.widget2x2ProgressColor || rootData.theme || '#0b57d0');
-      return /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#0b57d0';
-    }
-
     function renderList() {
       const listEl = document.getElementById('curatedListEl');
       const badgeEl = document.getElementById('listBadge');
@@ -903,15 +888,9 @@
       listEl.innerHTML = ordered.map(t => {
         const item = itemMap.get(t.id);
         const done = !!item.done;
-        const ratio = progressRatio(item);
-        // 文字进度条：已过的时间按比例把标题染成进度色，没有截止日或创建时间就保持原样
-        const fill = ratio === null ? '' :
-          ' style="background-image:linear-gradient(90deg,' + progressColor() + ' 0 ' +
-          (ratio * 100).toFixed(1) + '%,currentColor ' + (ratio * 100).toFixed(1) + '% 100%);' +
-          '-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent"';
         return '<div class="task-row ' + (done ? 'done' : '') + '" data-id="' + escapeHtml(t.id) + '" onclick="toggleTaskDone(this.dataset.id)">' +
           '<div class="task-check"></div>' +
-          '<div class="task-title"><span class="t-text"' + fill + '>' + escapeHtml(item.title) + '</span></div>' +
+          '<div class="task-title"><span class="t-text">' + escapeHtml(item.title) + '</span></div>' +
           '<button type="button" class="row-del" data-del-id="' + escapeHtml(t.id) + '" aria-label="删除" title="删除" onclick="event.stopPropagation();onRowDeleteClick(this)">' +
             '<span class="del-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg></span>' +
           '</button>' +

@@ -680,6 +680,80 @@ public class WidgetDataManager {
         return bitmap;
     }
 
+    /**
+     * 未勾选方框的「进度描边」版本：5px 内容色边框保持原样，上面叠一条居中的 4px 进度细线。
+     * 细线以路径为中心，所以宽度小于边框时天然落在边框正中间，不会占满边框宽度。
+     *
+     * @param color         边框颜色（内容色）
+     * @param progressColor 进度细线颜色（已做过对比度校正）
+     * @param ratio         0~1 的时间进度；<=0 时只画边框
+     * @param sizePx        位图边长，按控件实际像素传入，避免高密度屏放大发虚
+     */
+    public static android.graphics.Bitmap getThemedCheckBoxProgress(int color, int progressColor, float ratio, int sizePx) {
+        int size = Math.max(24, Math.min(sizePx, 192));
+        android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+        float scale = size / 48f;
+        android.graphics.RectF rect = new android.graphics.RectF(3 * scale, 3 * scale, 45 * scale, 45 * scale);
+        float radius = 10 * scale;
+
+        android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paint.setStyle(android.graphics.Paint.Style.STROKE);
+        paint.setStrokeWidth(5 * scale);
+        paint.setColor(color);
+        canvas.drawRoundRect(rect, radius, radius, paint);
+
+        if (ratio <= 0f) return bitmap;
+
+        // 路径从 12 点方向起笔，顺时针走一圈，读起来像倒计时
+        android.graphics.Path outline = new android.graphics.Path();
+        float cx = (rect.left + rect.right) / 2f;
+        outline.moveTo(cx, rect.top);
+        outline.lineTo(rect.right - radius, rect.top);
+        outline.arcTo(new android.graphics.RectF(rect.right - radius * 2, rect.top, rect.right, rect.top + radius * 2), -90f, 90f, false);
+        outline.lineTo(rect.right, rect.bottom - radius);
+        outline.arcTo(new android.graphics.RectF(rect.right - radius * 2, rect.bottom - radius * 2, rect.right, rect.bottom), 0f, 90f, false);
+        outline.lineTo(rect.left + radius, rect.bottom);
+        outline.arcTo(new android.graphics.RectF(rect.left, rect.bottom - radius * 2, rect.left + radius * 2, rect.bottom), 90f, 90f, false);
+        outline.lineTo(rect.left, rect.top + radius);
+        outline.arcTo(new android.graphics.RectF(rect.left, rect.top, rect.left + radius * 2, rect.top + radius * 2), 180f, 90f, false);
+        outline.lineTo(cx, rect.top);
+        android.graphics.PathMeasure measure = new android.graphics.PathMeasure(outline, false);
+        float length = measure.getLength();
+        if (length <= 0f) return bitmap;
+        android.graphics.Path segment = new android.graphics.Path();
+        if (!measure.getSegment(0f, length * Math.min(1f, ratio), segment, true)) return bitmap;
+
+        paint.setStrokeWidth(4 * scale);
+        paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+        paint.setColor(progressColor);
+        canvas.drawPath(segment, paint);
+        return bitmap;
+    }
+
+    /**
+     * 进度色在当前背景上对比度不足时，往黑或白方向推，避免和背景糊在一起。
+     */
+    public static int ensureVisibleColor(int color, int backdrop) {
+        double tone = luminance(color), bgTone = luminance(backdrop);
+        if (Math.abs(tone - bgTone) >= 0.32) return color;
+        int target = bgTone > 0.5 ? 0xFF000000 : 0xFFFFFFFF;
+        return blendColor(color, target, 0.45f);
+    }
+
+    private static double luminance(int color) {
+        return (0.2126 * ((color >> 16) & 0xFF) + 0.7152 * ((color >> 8) & 0xFF) + 0.0722 * (color & 0xFF)) / 255.0;
+    }
+
+    private static int blendColor(int from, int to, float amount) {
+        int fr = (from >> 16) & 0xFF, fg = (from >> 8) & 0xFF, fb = from & 0xFF;
+        int tr = (to >> 16) & 0xFF, tg = (to >> 8) & 0xFF, tb = to & 0xFF;
+        int r = Math.round(fr + (tr - fr) * amount);
+        int g = Math.round(fg + (tg - fg) * amount);
+        int b = Math.round(fb + (tb - fb) * amount);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
     public static synchronized boolean toggleItemDone(Context context, String itemId) {
         if (context == null || itemId == null || itemId.isEmpty()) return false;
         String json = getWidgetData(context);

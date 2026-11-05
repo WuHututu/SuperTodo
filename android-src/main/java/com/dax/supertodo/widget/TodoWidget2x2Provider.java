@@ -101,10 +101,20 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
                             0, item.title.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 }
                 title = styled;
-            } else {
-                title = progressTitle(item, progressColor);
             }
             views.setTextViewText(titles[shown], title);
+            if (!item.id.equals(completingId)) {
+                float ratio = progressRatio(item);
+                int checkSize = Math.round(18 * context.getResources().getDisplayMetrics().density);
+                if (ratio >= 0f) {
+                    int lineColor = WidgetDataManager.ensureVisibleColor(
+                            progressColor, WidgetDataManager.getWidgetBackgroundColor(context));
+                    views.setImageViewBitmap(checks[shown], WidgetDataManager.getThemedCheckBoxProgress(
+                            contentColor, lineColor, ratio, checkSize));
+                } else {
+                    views.setImageViewBitmap(checks[shown], WidgetDataManager.getThemedCheckBoxOutline(contentColor));
+                }
+            }
             Intent intent = new Intent(context, TodoWidget2x2Provider.class)
                     .setAction(ACTION_2X2_COMPLETE)
                     .setData(Uri.parse("supertodo://2x2/toggle/" + appWidgetId + "/" + Uri.encode(item.id)))
@@ -137,16 +147,13 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
     }
 
     /**
-     * 把标题按「创建时间 → 截止日 23:59:59」的时间比例着色：
-     * 已过部分用进度条颜色，剩余部分保持原色；到点后整段都是进度条颜色。
-     * 没有截止日或缺少创建时间的条目原样返回。
+     * 「创建时间 → 截止日 23:59:59」的已过比例，用于勾选框边框的进度细线。
+     * @return 0~1；缺少截止日或创建时间时返回 -1（不画进度）
      */
-    private static CharSequence progressTitle(TodoItem item, int progressColor) {
-        if (item == null || item.title == null || item.title.isEmpty()) {
-            return item == null ? "" : item.title;
-        }
-        if (item.created <= 0L || item.due == null || !item.due.matches("\\d{4}-\\d{2}-\\d{2}")) {
-            return item.title;
+    private static float progressRatio(TodoItem item) {
+        if (item == null || item.created <= 0L || item.due == null
+                || !item.due.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            return -1f;
         }
         long end;
         try {
@@ -154,20 +161,13 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
             format.setLenient(false);
             end = format.parse(item.due).getTime() + 86400000L - 1000L;
         } catch (Exception e) {
-            return item.title;
+            return -1f;
         }
         long total = end - item.created;
-        if (total <= 0L) return item.title;
+        if (total <= 0L) return -1f;
         double ratio = (double) (System.currentTimeMillis() - item.created) / (double) total;
-        if (ratio <= 0d) return item.title;
-        if (ratio > 1d) ratio = 1d;
-        int filled = (int) Math.round(ratio * item.title.length());
-        if (filled <= 0) return item.title;
-        android.text.SpannableString text = new android.text.SpannableString(item.title);
-        int safeFilled = Math.min(filled, item.title.length());
-        text.setSpan(new android.text.style.ForegroundColorSpan(progressColor),
-                0, safeFilled, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        return text;
+        if (ratio < 0d) return 0f;
+        return (float) Math.min(1d, ratio);
     }
 
     private static int getVisibleRowCount(Context context, int heightDp) {
