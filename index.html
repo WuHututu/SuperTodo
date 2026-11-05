@@ -443,11 +443,21 @@ try{
         </div>
         <div class="slider-row">
           <div class="slider-label">
-            <span>文字进度条颜色</span>
+            <span>进度环颜色</span>
             <span class="slider-val" id="valWidget2x2Progress">跟随主题</span>
           </div>
           <div class="palette" id="paletteWidget2x2Progress" style="margin:2px 0 0"></div>
-          <div class="set-hint" style="margin-top:4px">按创建到截止的时间比例，从文字左侧逐渐填满这个颜色；没有截止日的事项不显示</div>
+          <div class="set-hint" style="margin-top:4px">按创建到截止的时间比例，在勾选框边框上画一圈细线；没有截止日的事项不显示</div>
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">
+            <span>进度方向</span>
+            <span class="slider-val" id="valWidget2x2Direction">顺时针</span>
+          </div>
+          <div class="db-seg" id="segWidget2x2Direction" style="margin-top:6px">
+            <button class="seg on" data-dir="cw">顺时针</button>
+            <button class="seg" data-dir="ccw">逆时针</button>
+          </div>
         </div>
       </div>
     </div>

@@ -688,8 +688,9 @@ public class WidgetDataManager {
      * @param progressColor 进度细线颜色（已做过对比度校正）
      * @param ratio         0~1 的时间进度；<=0 时只画边框
      * @param sizePx        位图边长，按控件实际像素传入，避免高密度屏放大发虚
+     * @param clockwise     true 从 12 点顺时针走，false 逆时针走
      */
-    public static android.graphics.Bitmap getThemedCheckBoxProgress(int color, int progressColor, float ratio, int sizePx) {
+    public static android.graphics.Bitmap getThemedCheckBoxProgress(int color, int progressColor, float ratio, int sizePx, boolean clockwise) {
         int size = Math.max(24, Math.min(sizePx, 192));
         android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
         android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
@@ -722,13 +723,28 @@ public class WidgetDataManager {
         float length = measure.getLength();
         if (length <= 0f) return bitmap;
         android.graphics.Path segment = new android.graphics.Path();
-        if (!measure.getSegment(0f, length * Math.min(1f, ratio), segment, true)) return bitmap;
+        float filled = length * Math.min(1f, ratio);
+        // 路径本身从 12 点顺时针绕回 12 点：取尾段就是逆时针方向的填充
+        boolean segOk = clockwise
+                ? measure.getSegment(0f, filled, segment, true)
+                : measure.getSegment(length - filled, length, segment, true);
+        if (!segOk) return bitmap;
 
-        paint.setStrokeWidth(4 * scale);
+        paint.setStrokeWidth(2.5f * scale);
         paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
         paint.setColor(progressColor);
         canvas.drawPath(segment, paint);
         return bitmap;
+    }
+
+    /** 进度方向：cw 顺时针（默认），ccw 逆时针。 */
+    public static boolean is2x2ProgressClockwise(Context context) {
+        if (context == null) return true;
+        try {
+            String dir = new JSONObject(getWidgetData(context)).optString("widget2x2ProgressDirection", "cw");
+            return !"ccw".equals(dir);
+        } catch (Exception ignore) {}
+        return true;
     }
 
     /**

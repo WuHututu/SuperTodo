@@ -28,6 +28,7 @@ let state={
   widget2x2:[],
   widget2x2Background:{opacity:80,blur:12},
   widget2x2ProgressColor:'',
+  widget2x2ProgressDirection:'cw',
   repeatQueue:[],
   dataUpdatedAt:0,
   quadrantWidget:{q1:[],q2:[],q3:[],q4:[]}
@@ -151,6 +152,7 @@ function load(){
     state.items=(d.items||[]).map(normalizeStoredItem);
     state.repeatQueue=Array.isArray(d.repeatQueue)?d.repeatQueue:[];
     if(typeof d.widget2x2ProgressColor==='string')state.widget2x2ProgressColor=d.widget2x2ProgressColor;
+    state.widget2x2ProgressDirection=d.widget2x2ProgressDirection==='ccw'?'ccw':'cw';
     if(Array.isArray(d.types)&&d.types.length)state.types=d.types;
     if(Array.isArray(d.scenes)&&d.scenes.length)state.scenes=d.scenes;
     if(Array.isArray(d.times)&&d.times.length)state.times=d.times;
@@ -316,6 +318,10 @@ function syncFromNativeWidget(){
         }
         if(typeof d.widget2x2ProgressColor==='string'&&d.widget2x2ProgressColor!==state.widget2x2ProgressColor){
           state.widget2x2ProgressColor=d.widget2x2ProgressColor;
+          changed=true;
+        }
+        if(d.widget2x2ProgressDirection&&d.widget2x2ProgressDirection!==state.widget2x2ProgressDirection){
+          state.widget2x2ProgressDirection=d.widget2x2ProgressDirection==='ccw'?'ccw':'cw';
           changed=true;
         }
         if(d.widget2x2Background&&typeof d.widget2x2Background==='object'&&
@@ -2357,6 +2363,11 @@ function renderWidget2x2Settings(){
   const progressVal=$('#valWidget2x2Progress');
   const current=(state.widget2x2ProgressColor||'').toLowerCase();
   if(progressVal) progressVal.textContent=current||'跟随主题';
+  const directionVal=$('#valWidget2x2Direction');
+  const directionSeg=$('#segWidget2x2Direction');
+  const direction=state.widget2x2ProgressDirection==='ccw'?'ccw':'cw';
+  if(directionVal) directionVal.textContent=direction==='ccw'?'逆时针':'顺时针';
+  if(directionSeg) directionSeg.querySelectorAll('.seg').forEach(btn=>btn.classList.toggle('on',btn.dataset.dir===direction));
   if(progressWrap){
     progressWrap.innerHTML=
       `<button class="pal-sw pal-sw-auto ${current?'':'on'}" data-c="" aria-label="跟随主题" aria-pressed="${!current}">主题</button>`+
@@ -5060,6 +5071,16 @@ document.addEventListener('DOMContentLoaded',()=>{
       const sw=e.target.closest('.pal-sw');
       if(!sw)return;
       state.widget2x2ProgressColor=(sw.dataset.c||'').toLowerCase();
+      save();
+      renderWidget2x2Settings();
+    });
+  }
+  const directionSeg=$('#segWidget2x2Direction');
+  if(directionSeg){
+    directionSeg.addEventListener('click',e=>{
+      const btn=e.target.closest('.seg');
+      if(!btn)return;
+      state.widget2x2ProgressDirection=btn.dataset.dir==='ccw'?'ccw':'cw';
       save();
       renderWidget2x2Settings();
     });
