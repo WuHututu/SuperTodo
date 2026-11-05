@@ -685,7 +685,8 @@ public class WidgetDataManager {
                     boolean cur = obj.optBoolean("done", false);
                     nextState = !cur;
                     updateDoneMetadata(obj, nextState);
-                    completeRepeatItem(items, obj);
+                    if (nextState) completeRepeatItem(root, obj);
+                    else dropPendingRepeat(root, obj);
                     updated = true;
                     break;
                 }
@@ -809,7 +810,7 @@ public class WidgetDataManager {
                 JSONObject item = findItem(mainItems, id);
                 if (item != null && !item.optBoolean("done", false)) {
                     updateDoneMetadata(item, true);
-                    completeRepeatItem(mainItems, item);
+                    completeRepeatItem(root, item);
                     completedId = id;
                     break;
                 }
@@ -1063,7 +1064,8 @@ public class WidgetDataManager {
                         JSONObject rootIt = rootItems.optJSONObject(j);
                         if (rootIt != null && itemId.equals(rootIt.optString("id"))) {
                             updateDoneMetadata(rootIt, nextState);
-                            completeRepeatItem(rootItems, rootIt);
+                            if (nextState) completeRepeatItem(root, rootIt);
+                            else dropPendingRepeat(root, rootIt);
                             break;
                         }
                     }
@@ -1204,11 +1206,13 @@ public class WidgetDataManager {
     /**
      * 循环任务被完成后，按 repeatDays 天数生成下一次事项：复制当前任务字段，重置完成状态并把到期日推进到下一个周期。
      * 到期日按 UTC 日期计算避免时区偏移跳天；生成后把新 ID 写回 repeatNextId 防止重复生成。
-     * @param items 根节点的事项数组，生成的新事项追加到这里
+     * 与前端保持一致：新事项不直接进 items，而是进 repeatQueue 并带上 visibleFrom（下一次截止日的本地零点），
+     * 到点后由应用释放回 items。小组件只读 items，所以不会提前显示。
+     * @param root 数据根节点，repeatQueue 挂在它上面
      * @param item 刚被完成的事项
      * @throws Exception JSON 复制失败时抛出，由调用方统一捕获
      */
-    private static void completeRepeatItem(JSONArray items, JSONObject item) throws Exception {
+    private static void completeRepeatItem(JSONObject root, JSONObject item) throws Exception {
         boolean done = item.optBoolean("done", false);
         if (!done) return;
         double value = item.optDouble("repeatDays", 0);
@@ -1245,8 +1249,95 @@ public class WidgetDataManager {
         }
         next.put("created", System.currentTimeMillis());
         next.remove("repeatNextId");
+        // 露面时间：下一次截止日的本地 00:00（用本地时区把 due 解析成零点）
+        java.text.SimpleDateFormat localFormat = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
+        long visibleFrom;
+        try {
+            visibleFrom = localFormat.parse(next.optString("due")).getTime();
+        } catch (java.text.ParseException e) {
+            visibleFrom = System.currentTimeMillis() + 86400000L;
+        }
+        next.put("visibleFrom", visibleFrom);
         item.put("repeatNextId", id);
-        items.put(next);
+        JSONArray queue = root.optJSONArray("repeatQueue");
+        if (queue == null) {
+            queue = new JSONArray();
+            root.put("repeatQueue", queue);
+        }
+        queue.put(next);
+    }
+
+    /** 取消完成时撤回还没露面的下一次；已经进过 items 的不动。 */
+    private static void dropPendingRepeat(JSONObject root, JSONObject item) {
+        if (root == null || item == null) return;
+        String nextId = item.optString("repeatNextId", "");
+        if (nextId.isEmpty()) return;
+        JSONArray queue = root.optJSONArray("repeatQueue");
+        if (queue == null) return;
+        for (int i = queue.length() - 1; i >= 0; i--) {
+            JSONObject entry = queue.optJSONObject(i);
+            if (entry != null && nextId.equals(entry.optString("id"))) {
+                queue.remove(i);
+                item.remove("repeatNextId");
+                return;
+            }
+        }
+    }
+
+    /**
+     * 把 visibleFrom 已过的重复待办从 repeatQueue 放回 items。
+     * 小组件刷新时也调用一次，这样过了零点即使不打开应用，桌面也能看到下一次。
+     * @return 是否发生了变更
+     */
+    public static synchronized boolean releaseRepeatQueue(Context context) {
+        if (context == null) return false;
+        String json = getWidgetData(context);
+        if (json.isEmpty()) return false;
+        try {
+            JSONObject root = new JSONObject(json);
+            JSONArray queue = root.optJSONArray("repeatQueue");
+            if (queue == null || queue.length() == 0) return false;
+            JSONArray items = root.optJSONArray("items");
+            if (items == null) {
+                items = new JSONArray();
+                root.put("items", items);
+            }
+            Set<String> existing = new HashSet<>();
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.optJSONObject(i);
+                if (item != null) existing.add(item.optString("id"));
+            }
+            long now = System.currentTimeMillis();
+            JSONArray rest = new JSONArray();
+            boolean changed = false;
+            for (int i = 0; i < queue.length(); i++) {
+                JSONObject entry = queue.optJSONObject(i);
+                if (entry == null) {
+                    changed = true;
+                    continue;
+                }
+                String id = entry.optString("id");
+                long visibleFrom = entry.optLong("visibleFrom", 0L);
+                if (!id.isEmpty() && existing.contains(id)) {
+                    // items 里已经有同 id 的条目，丢掉队列副本
+                    changed = true;
+                    continue;
+                }
+                if (visibleFrom > 0L && visibleFrom <= now) {
+                    entry.remove("visibleFrom");
+                    items.put(entry);
+                    changed = true;
+                } else {
+                    rest.put(entry);
+                }
+            }
+            if (!changed) return false;
+            root.put("repeatQueue", rest);
+            root.put("dataUpdatedAt", System.currentTimeMillis());
+            saveWidgetData(context, root.toString());
+            return true;
+        } catch (Exception ignore) {}
+        return false;
     }
 
     private static JSONObject findItem(JSONArray items, String itemId) {

@@ -50,17 +50,20 @@ function dropPendingRepeat(store, item) {
 }
 
 // 到点释放：把 visibleFrom 已过的条目从 repeatQueue 移入 items。
+// items 里已经有同 id 的条目（原生侧提前放出过）就直接丢弃队列副本，避免重复。
 function releaseRepeatQueue(store, now = Date.now()) {
   if(!store || !Array.isArray(store.repeatQueue) || !store.repeatQueue.length) return [];
+  if(!Array.isArray(store.items)) store.items = [];
+  const inItems = new Set(store.items.map(x => x && x.id).filter(Boolean));
   const ready = [];
   const rest = [];
   store.repeatQueue.forEach(entry => {
-    if(entry && Number(entry.visibleFrom || 0) <= now) ready.push(entry);
+    if(!entry) return;
+    if(entry.id && inItems.has(entry.id)) return;
+    if(Number(entry.visibleFrom || 0) <= now) ready.push(entry);
     else rest.push(entry);
   });
-  if(!ready.length) return [];
   store.repeatQueue = rest;
-  if(!Array.isArray(store.items)) store.items = [];
   ready.forEach(entry => { delete entry.visibleFrom; store.items.push(entry); });
   return ready;
 }

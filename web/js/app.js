@@ -284,6 +284,12 @@ function syncFromNativeWidget(){
             }
           });
         }
+        // 原生侧可能已经把队列条目放进了 items，这里丢掉重复的队列副本
+        if(Array.isArray(state.repeatQueue)&&state.repeatQueue.length){
+          const itemIds=new Set(state.items.map(x=>x&&x.id).filter(Boolean));
+          const pruned=state.repeatQueue.filter(x=>!(x&&x.id&&itemIds.has(x.id)));
+          if(pruned.length!==state.repeatQueue.length){ state.repeatQueue=pruned; changed=true; }
+        }
         if(Array.isArray(d.widget2x2)){
           const nextWidget2x2=buildWidget2x2Items(d.widget2x2,state.items);
           if(JSON.stringify(state.widget2x2||[])!==JSON.stringify(nextWidget2x2)){
@@ -2866,7 +2872,7 @@ function compressImageFile(file, maxWidth, quality, callback){
 }
 
 /* ========== 软件信息 ========== */
-const APP_VERSION='v1.12.0';
+const APP_VERSION='v1.12.1';
 const REPO_URL='https://github.com/PaidaxingTuT/SuperTodo';
 const REPO_API='https://api.github.com/repos/PaidaxingTuT/SuperTodo';
 let devClickCount=0, devClickTimer=null;
