@@ -25,6 +25,7 @@ public class TodoWidgetQuadrantProvider extends AppWidgetProvider {
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         // 过了零点的重复待办先放回 items，再渲染
         WidgetDataManager.releaseRepeatQueue(context);
+        WidgetDataManager.scheduleWidgetRefresh(context);
         for (int appWidgetId : appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId);
         }

@@ -363,6 +363,7 @@ public class TodoWidget4x4Provider extends AppWidgetProvider {
         updateWidgets(context, appWidgetManager, appWidgetIds);
         // 过了零点的重复待办先放回 items，再渲染
         WidgetDataManager.releaseRepeatQueue(context);
+        WidgetDataManager.scheduleWidgetRefresh(context);
     }
 
     @Override

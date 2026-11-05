@@ -1,8 +1,11 @@
 package com.dax.supertodo.widget;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.Bundle;
@@ -780,6 +783,36 @@ public class WidgetDataManager {
         int g = Math.round(fg + (tg - fg) * amount);
         int b = Math.round(fb + (tb - fb) * amount);
         return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
+    /** 小组件定时刷新的间隔：进度环只靠 updatePeriodMillis 在部分 ROM 上不生效，这里用闹钟兜底。 */
+    public static final long WIDGET_REFRESH_INTERVAL = 15 * 60 * 1000L;
+
+    /**
+     * 注册一个 15 分钟的重复闹钟，向四个小组件发 ACTION_REFRESH_WIDGET，让进度环随时间推进。
+     * 同一份 PendingIntent 重复注册是幂等的，不会叠加多个闹钟。
+     */
+    public static void scheduleWidgetRefresh(Context context) {
+        if (context == null) return;
+        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager == null) return;
+        Class<?>[] providers = {
+                TodoWidget2x2Provider.class,
+                TodoWidget4x2Provider.class,
+                TodoWidget4x4Provider.class,
+                TodoWidgetQuadrantProvider.class
+        };
+        long triggerAt = System.currentTimeMillis() + WIDGET_REFRESH_INTERVAL;
+        int requestCode = 9100;
+        for (Class<?> provider : providers) {
+            Intent intent = new Intent(context, provider).setAction(ACTION_REFRESH_WIDGET);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    context, requestCode++, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            try {
+                alarmManager.setInexactRepeating(AlarmManager.RTC, triggerAt, WIDGET_REFRESH_INTERVAL, pendingIntent);
+            } catch (Exception ignore) {}
+        }
     }
 
     public static synchronized boolean toggleItemDone(Context context, String itemId) {
