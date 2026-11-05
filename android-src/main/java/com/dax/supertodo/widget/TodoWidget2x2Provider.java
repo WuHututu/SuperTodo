@@ -107,8 +107,10 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
                 float ratio = progressRatio(item);
                 int checkSize = Math.round(18 * context.getResources().getDisplayMetrics().density);
                 if (ratio >= 0f) {
+                    int overdueColor = WidgetDataManager.get2x2OverdueColor(context);
+                    int baseColor = (ratio >= 1f && overdueColor != 0) ? overdueColor : progressColor;
                     int lineColor = WidgetDataManager.ensureVisibleColor(
-                            progressColor, WidgetDataManager.getWidgetBackgroundColor(context));
+                            baseColor, WidgetDataManager.getWidgetBackgroundColor(context));
                     views.setImageViewBitmap(checks[shown], WidgetDataManager.getThemedCheckBoxProgress(
                             contentColor, lineColor, ratio, checkSize,
                             WidgetDataManager.is2x2ProgressClockwise(context)));

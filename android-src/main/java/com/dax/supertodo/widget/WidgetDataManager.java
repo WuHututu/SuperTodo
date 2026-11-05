@@ -737,6 +737,18 @@ public class WidgetDataManager {
         return bitmap;
     }
 
+    /**
+     * 逾期后的进度环颜色；没设置时返回 0，表示沿用进度色。
+     */
+    public static int get2x2OverdueColor(Context context) {
+        if (context == null) return 0;
+        try {
+            String hex = new JSONObject(getWidgetData(context)).optString("widget2x2OverdueColor", "");
+            if (hex.matches("^#[0-9a-fA-F]{6}$")) return android.graphics.Color.parseColor(hex);
+        } catch (Exception ignore) {}
+        return 0;
+    }
+
     /** 进度方向：cw 顺时针（默认），ccw 逆时针。 */
     public static boolean is2x2ProgressClockwise(Context context) {
         if (context == null) return true;

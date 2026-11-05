@@ -29,6 +29,7 @@ let state={
   widget2x2Background:{opacity:80,blur:12},
   widget2x2ProgressColor:'',
   widget2x2ProgressDirection:'cw',
+  widget2x2OverdueColor:'',
   repeatQueue:[],
   dataUpdatedAt:0,
   quadrantWidget:{q1:[],q2:[],q3:[],q4:[]}
@@ -153,6 +154,7 @@ function load(){
     state.repeatQueue=Array.isArray(d.repeatQueue)?d.repeatQueue:[];
     if(typeof d.widget2x2ProgressColor==='string')state.widget2x2ProgressColor=d.widget2x2ProgressColor;
     state.widget2x2ProgressDirection=d.widget2x2ProgressDirection==='ccw'?'ccw':'cw';
+    if(typeof d.widget2x2OverdueColor==='string')state.widget2x2OverdueColor=d.widget2x2OverdueColor;
     if(Array.isArray(d.types)&&d.types.length)state.types=d.types;
     if(Array.isArray(d.scenes)&&d.scenes.length)state.scenes=d.scenes;
     if(Array.isArray(d.times)&&d.times.length)state.times=d.times;
@@ -322,6 +324,10 @@ function syncFromNativeWidget(){
         }
         if(d.widget2x2ProgressDirection&&d.widget2x2ProgressDirection!==state.widget2x2ProgressDirection){
           state.widget2x2ProgressDirection=d.widget2x2ProgressDirection==='ccw'?'ccw':'cw';
+          changed=true;
+        }
+        if(typeof d.widget2x2OverdueColor==='string'&&d.widget2x2OverdueColor!==state.widget2x2OverdueColor){
+          state.widget2x2OverdueColor=d.widget2x2OverdueColor;
           changed=true;
         }
         if(d.widget2x2Background&&typeof d.widget2x2Background==='object'&&
@@ -2363,6 +2369,15 @@ function renderWidget2x2Settings(){
   const progressVal=$('#valWidget2x2Progress');
   const current=(state.widget2x2ProgressColor||'').toLowerCase();
   if(progressVal) progressVal.textContent=current||'跟随主题';
+  const overdueWrap=$('#paletteWidget2x2Overdue');
+  const overdueVal=$('#valWidget2x2Overdue');
+  const overdue=(state.widget2x2OverdueColor||'').toLowerCase();
+  if(overdueVal) overdueVal.textContent=overdue||'跟随进度色';
+  if(overdueWrap){
+    overdueWrap.innerHTML=
+      `<button class="pal-sw pal-sw-auto ${overdue?'':'on'}" data-c="" aria-label="跟随进度色" aria-pressed="${!overdue}">同</button>`+
+      PALETTE.map(c=>`<button class="pal-sw ${overdue===c?'on':''}" style="background:${c}" data-c="${c}" aria-label="逾期颜色 ${c}" aria-pressed="${overdue===c}"></button>`).join('');
+  }
   const directionVal=$('#valWidget2x2Direction');
   const directionSeg=$('#segWidget2x2Direction');
   const direction=state.widget2x2ProgressDirection==='ccw'?'ccw':'cw';
@@ -5071,6 +5086,16 @@ document.addEventListener('DOMContentLoaded',()=>{
       const sw=e.target.closest('.pal-sw');
       if(!sw)return;
       state.widget2x2ProgressColor=(sw.dataset.c||'').toLowerCase();
+      save();
+      renderWidget2x2Settings();
+    });
+  }
+  const overdueSwatches=$('#paletteWidget2x2Overdue');
+  if(overdueSwatches){
+    overdueSwatches.addEventListener('click',e=>{
+      const sw=e.target.closest('.pal-sw');
+      if(!sw)return;
+      state.widget2x2OverdueColor=(sw.dataset.c||'').toLowerCase();
       save();
       renderWidget2x2Settings();
     });
