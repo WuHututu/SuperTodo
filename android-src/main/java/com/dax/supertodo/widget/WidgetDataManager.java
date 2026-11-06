@@ -1471,7 +1471,9 @@ public class WidgetDataManager {
                     continue;
                 }
                 if (visibleFrom > 0L && visibleFrom <= now) {
+                    // 露面那一刻才算“创建”，否则进度环会从上一个周期的完成时刻开始算，一看就过半了
                     entry.remove("visibleFrom");
+                    entry.put("created", visibleFrom);
                     items.put(entry);
                     changed = true;
                 } else {

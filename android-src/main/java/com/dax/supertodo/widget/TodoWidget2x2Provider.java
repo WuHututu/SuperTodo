@@ -41,6 +41,10 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
      */
     private static void updateAppWidget(Context context, AppWidgetManager appWidgetManager, int appWidgetId,
                                         String completingId, List<TodoItem> stageItems, int frame) {
+        // 菜单刷新/闹钟刷新都要先释放到点的重复待办，否则凌晨那次刷新只会重画旧数据
+        if (stageItems == null && frame == 0) {
+            try { WidgetDataManager.releaseRepeatQueue(context); } catch (Exception ignore) {}
+        }
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_2x2);
         int width = WidgetDataManager.getWidgetWidth(context, appWidgetManager, appWidgetId, 120);
         int height = WidgetDataManager.getWidgetHeight(context, appWidgetManager, appWidgetId, 120);
@@ -198,12 +202,17 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
-        // 过了零点的重复待办先放回 items，再渲染
-        WidgetDataManager.releaseRepeatQueue(context);
         WidgetDataManager.scheduleWidgetRefresh(context);
         for (int appWidgetId : appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId);
         }
+    }
+
+    @Override
+    public void onEnabled(Context context) {
+        super.onEnabled(context);
+        WidgetDataManager.scheduleWidgetRefresh(context);
+        try { WidgetDataManager.releaseRepeatQueue(context); } catch (Exception ignore) {}
     }
 
     @Override
