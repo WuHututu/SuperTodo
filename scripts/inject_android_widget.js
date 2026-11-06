@@ -22,6 +22,9 @@ function injectWidgetManifest() {
     <uses-permission android:name="com.miui.home.launcher.permission.INSTALL_SHORTCUT" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 跨天刷新用精确闹钟：API 31-32 需运行时授权，33+ 由 USE_EXACT_ALARM 直接授予 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 `;
   if (!content.includes('INSTALL_SHORTCUT')) {
     content = content.replace('<application', perms + '\n    <application');
