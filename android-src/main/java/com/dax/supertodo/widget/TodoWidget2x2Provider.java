@@ -108,18 +108,24 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
             }
             views.setTextViewText(titles[shown], title);
             if (!item.id.equals(completingId)) {
-                float ratio = progressRatio(item);
-                int checkSize = Math.round(18 * context.getResources().getDisplayMetrics().density);
-                if (ratio >= 0f) {
-                    int overdueColor = WidgetDataManager.get2x2OverdueColor(context);
-                    int baseColor = (ratio >= 1f && overdueColor != 0) ? overdueColor : progressColor;
-                    int lineColor = WidgetDataManager.ensureVisibleColor(
-                            baseColor, WidgetDataManager.getWidgetBackgroundColor(context));
-                    views.setImageViewBitmap(checks[shown], WidgetDataManager.getThemedCheckBoxProgress(
-                            contentColor, lineColor, ratio, checkSize,
-                            WidgetDataManager.is2x2ProgressClockwise(context)));
-                } else {
-                    views.setImageViewBitmap(checks[shown], WidgetDataManager.getThemedCheckBoxOutline(contentColor));
+                try {
+                    float ratio = progressRatio(item);
+                    // 位图尺寸限制在 48px：再大对 18dp 的控件没有收益，反而撑大 RemoteViews 负载
+                    int checkSize = Math.min(48, Math.round(18 * context.getResources().getDisplayMetrics().density));
+                    if (ratio >= 0f) {
+                        int overdueColor = WidgetDataManager.get2x2OverdueColor(context);
+                        int baseColor = (ratio >= 1f && overdueColor != 0) ? overdueColor : progressColor;
+                        int lineColor = WidgetDataManager.ensureVisibleColor(
+                                baseColor, WidgetDataManager.getWidgetBackgroundColor(context));
+                        views.setImageViewBitmap(checks[shown], WidgetDataManager.getThemedCheckBoxProgress(
+                                contentColor, lineColor, ratio, checkSize,
+                                WidgetDataManager.is2x2ProgressClockwise(context)));
+                    } else {
+                        views.setImageViewBitmap(checks[shown], WidgetDataManager.getThemedCheckBoxOutline(contentColor));
+                    }
+                } catch (Throwable t) {
+                    // 单行绘制失败就退回普通方框，不能让整次更新中断
+                    try { views.setImageViewBitmap(checks[shown], WidgetDataManager.getThemedCheckBoxOutline(contentColor)); } catch (Throwable ignore) {}
                 }
             }
             Intent intent = new Intent(context, TodoWidget2x2Provider.class)
@@ -137,6 +143,11 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
             );
             shown++;
         }
+
+        try {
+            views.setTextViewText(R.id.widget_2x2_stamp,
+                    new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(new java.util.Date()));
+        } catch (Throwable ignore) {}
 
         views.setViewVisibility(R.id.widget_2x2_empty_view, shown == 0 ? View.VISIBLE : View.GONE);
         Intent open = new Intent(context, Widget2x2DialogActivity.class)

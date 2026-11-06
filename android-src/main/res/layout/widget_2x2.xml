@@ -219,4 +219,17 @@
             android:textStyle="bold"
             android:visibility="gone" />
     </LinearLayout>
+
+    <!-- 刷新时间戳：既做诊断，也让用户知道画面是什么时候的 -->
+    <TextView
+        android:id="@+id/widget_2x2_stamp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="5dp"
+        android:alpha="0.45"
+        android:includeFontPadding="false"
+        android:text=""
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="7sp" />
 </FrameLayout>
