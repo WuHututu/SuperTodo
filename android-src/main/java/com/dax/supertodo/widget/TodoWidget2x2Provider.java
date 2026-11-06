@@ -203,6 +203,7 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         WidgetDataManager.scheduleWidgetRefresh(context);
+        WidgetDataManager.scheduleMidnightRefresh(context);
         for (int appWidgetId : appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId);
         }
@@ -212,6 +213,7 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
     public void onEnabled(Context context) {
         super.onEnabled(context);
         WidgetDataManager.scheduleWidgetRefresh(context);
+        WidgetDataManager.scheduleMidnightRefresh(context);
         try { WidgetDataManager.releaseRepeatQueue(context); } catch (Exception ignore) {}
     }
 
@@ -255,6 +257,9 @@ public class TodoWidget2x2Provider extends AppWidgetProvider {
                 }
             }, STAGE3_MS);
         } else if (WidgetDataManager.ACTION_REFRESH_WIDGET.equals(action)) {
+            // 每次刷新都把下一天的跨天闹钟补上；跨天那一次响完会自然续到次日
+            WidgetDataManager.scheduleMidnightRefresh(context);
+            WidgetDataManager.scheduleWidgetRefresh(context);
             AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
             int[] appWidgetIds = appWidgetManager.getAppWidgetIds(new ComponentName(context, TodoWidget2x2Provider.class));
             for (int appWidgetId : appWidgetIds) {
