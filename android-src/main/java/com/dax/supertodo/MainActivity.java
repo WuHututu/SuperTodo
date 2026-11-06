@@ -18,7 +18,6 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         // 应用每次启动都补一次闹钟：升级后即使系统没有回调 onUpdate，进度环也能继续走
         try { com.dax.supertodo.widget.WidgetDataManager.scheduleWidgetRefresh(this); } catch (Exception ignore) {}
-        try { com.dax.supertodo.widget.WidgetDataManager.scheduleMidnightRefresh(this); } catch (Exception ignore) {}
         try {
             if (getBridge() != null && getBridge().getWebView() != null) {
                 // 注册小组件与 Web 端数据及事件交互桥梁

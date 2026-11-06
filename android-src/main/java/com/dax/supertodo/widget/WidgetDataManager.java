@@ -789,44 +789,6 @@ public class WidgetDataManager {
     public static final long WIDGET_REFRESH_INTERVAL = 15 * 60 * 1000L;
 
     /**
-     * 每天 00:01 的“跨天”闹钟：用 setAndAllowWhileIdle，Doze 下也能被唤醒，
-     * 保证重复待办在零点后不用打开应用就能出现在桌面上。响过之后再排下一天。
-     */
-    public static void scheduleMidnightRefresh(Context context) {
-        if (context == null) return;
-        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        if (alarmManager == null) return;
-        java.util.Calendar next = java.util.Calendar.getInstance();
-        next.add(java.util.Calendar.DAY_OF_MONTH, 1);
-        next.set(java.util.Calendar.HOUR_OF_DAY, 0);
-        next.set(java.util.Calendar.MINUTE, 1);
-        next.set(java.util.Calendar.SECOND, 0);
-        next.set(java.util.Calendar.MILLISECOND, 0);
-        Intent intent = new Intent(context, TodoWidget2x2Provider.class).setAction(ACTION_REFRESH_WIDGET);
-        PendingIntent pendingIntent = PendingIntent.getBroadcast(
-                context, 9200, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        try {
-            boolean canExact = true;
-            if (android.os.Build.VERSION.SDK_INT >= 31) {
-                canExact = alarmManager.canScheduleExactAlarms();
-            }
-            if (canExact) {
-                // 有精确闹钟权限时走系统级准点唤醒，Doze 下也准时
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.getTimeInMillis(), pendingIntent);
-                } else {
-                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, next.getTimeInMillis(), pendingIntent);
-                }
-            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.getTimeInMillis(), pendingIntent);
-            } else {
-                alarmManager.set(AlarmManager.RTC_WAKEUP, next.getTimeInMillis(), pendingIntent);
-            }
-        } catch (Exception ignore) {}
-    }
-
-    /**
      * 注册一个 15 分钟的重复闹钟，向四个小组件发 ACTION_REFRESH_WIDGET，让进度环随时间推进。
      * 同一份 PendingIntent 重复注册是幂等的，不会叠加多个闹钟。
      */
@@ -1509,9 +1471,7 @@ public class WidgetDataManager {
                     continue;
                 }
                 if (visibleFrom > 0L && visibleFrom <= now) {
-                    // 露面那一刻才算“创建”，否则进度环会从上一个周期的完成时刻开始算，一看就过半了
                     entry.remove("visibleFrom");
-                    entry.put("created", visibleFrom);
                     items.put(entry);
                     changed = true;
                 } else {

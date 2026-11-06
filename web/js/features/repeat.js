@@ -64,12 +64,6 @@ function releaseRepeatQueue(store, now = Date.now()) {
     else rest.push(entry);
   });
   store.repeatQueue = rest;
-  ready.forEach(entry => {
-    const visibleAt = Number(entry.visibleFrom) || 0;
-    delete entry.visibleFrom;
-    // 露面即起点：进度环从这一刻开始算，否则会从上一周期的完成时间起算
-    if(visibleAt > 0) entry.created = visibleAt;
-    store.items.push(entry);
-  });
+  ready.forEach(entry => { delete entry.visibleFrom; store.items.push(entry); });
   return ready;
 }
